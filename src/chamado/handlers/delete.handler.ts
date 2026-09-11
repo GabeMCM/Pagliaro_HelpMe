@@ -5,23 +5,28 @@ import { UserRepository } from "../../user/user.repo.ts";
 import { ChamadoRepository } from "../chamado.repo.ts";
 import { ChamadoService } from "../chamado.service.ts";
 
-const chamadoService = new ChamadoService(
+const chamado_service = new ChamadoService(
   new ChamadoRepository(new SQLiteAdapter("local.db", "chamados")),
 );
 
-const userRepo = new UserRepository(
+const user_repo = new UserRepository(
   new SQLiteAdapter("local.db", "users"),
 );
 
 export async function deleteChamado(c: Context) {
-  const currentUser = await getCurrentUser(c);
+  const current_user = await getCurrentUser(c);
 
-  if (!currentUser.success) {
-    return c.json(currentUser, 403);
+  if (!current_user.success) {
+    return c.json(current_user, 403);
   }
 
   const id = c.req.param("id");
-  const result = await chamadoService.delete(currentUser.data, id);
+
+  if (!id) {
+    return c.json(fail("Id não informado"), 400);
+  }
+
+  const result = await chamado_service.delete(current_user.data, id);
 
   if (result.success) {
     return c.json({ ...result, message: T.ResponseMessage[200] }, 200);
@@ -31,13 +36,13 @@ export async function deleteChamado(c: Context) {
 }
 
 async function getCurrentUser(c: Context): Promise<T.Result<T.User>> {
-  const userId = c.req.header("x-user-id");
+  const user_id = c.req.header("x-user-id");
 
-  if (!userId) {
+  if (!user_id) {
     return fail("Usuário não informado");
   }
 
-  return await userRepo.findById(userId);
+  return await user_repo.findById(user_id);
 }
 
 function statusFromResult(result: T.Failure): keyof typeof T.ResponseMessage {

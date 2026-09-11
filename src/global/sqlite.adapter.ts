@@ -7,8 +7,8 @@ export class SQLiteAdapter implements T.DBAdapter {
   private db: Database;
   private table: string;
 
-  constructor(dbPath = "local.db", table = "records") {
-    this.db = new Database(dbPath);
+  constructor(db_path = "local.db", table = "records") {
+    this.db = new Database(db_path);
     this.table = this.safeName(table);
 
     this.db.exec(`

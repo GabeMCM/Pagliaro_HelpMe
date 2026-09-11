@@ -2,30 +2,30 @@ import type * as T from "../global/structure.ts";
 import { ChamadoRepository } from "./chamado.repo.ts";
 
 export class ChamadoService {
-  constructor(private chamadoRepo: ChamadoRepository) {}
+  constructor(private chamado_repo: ChamadoRepository) {}
 
   async create(
-    currentUser: T.User,
+    current_user: T.User,
     chamado: Omit<T.Chamado, "id">,
   ): Promise<T.Result<T.IdData>> {
-    if (!currentUser.active) {
+    if (!current_user.active) {
       return this.fail("Usuário desativado");
     }
 
-    return await this.chamadoRepo.create(chamado);
+    return await this.chamado_repo.create(chamado);
   }
 
   async findById(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.Chamado>> {
-    const chamado = await this.chamadoRepo.findById(id);
+    const chamado = await this.chamado_repo.findById(id);
 
     if (!chamado.success) {
       return chamado;
     }
 
-    if (!this.canView(currentUser, chamado.data)) {
+    if (!this.canView(current_user, chamado.data)) {
       return this.fail("Usuário sem permissão para ver este chamado");
     }
 
@@ -33,53 +33,53 @@ export class ChamadoService {
   }
 
   async update(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
     chamado: Partial<Omit<T.Chamado, "id">>,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser)) {
+    if (!this.isDev(current_user)) {
       return this.fail("Somente Dev pode editar chamado");
     }
 
-    return await this.chamadoRepo.update(id, chamado);
+    return await this.chamado_repo.update(id, chamado);
   }
 
   async delete(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser)) {
+    if (!this.isDev(current_user)) {
       return this.fail("Somente Dev pode apagar chamado");
     }
 
-    return await this.chamadoRepo.delete(id);
+    return await this.chamado_repo.delete(id);
   }
 
   async finish(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
-    const chamado = await this.findById(currentUser, id);
+    const chamado = await this.findById(current_user, id);
 
     if (!chamado.success) {
       return chamado;
     }
 
-    return await this.chamadoRepo.update(id, {
+    return await this.chamado_repo.update(id, {
       status: "FINALIZADO",
       updated: new Date(),
     });
   }
 
   async deactivate(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser) && !this.isGestor(currentUser)) {
+    if (!this.isDev(current_user) && !this.isGestor(current_user)) {
       return this.fail("Usuário sem permissão para desativar chamado");
     }
 
-    const chamado = await this.chamadoRepo.findById(id);
+    const chamado = await this.chamado_repo.findById(id);
 
     if (!chamado.success) {
       return chamado;
@@ -89,7 +89,7 @@ export class ChamadoService {
       return this.fail("Chamado em andamento não pode ser desativado");
     }
 
-    return await this.chamadoRepo.update(id, {
+    return await this.chamado_repo.update(id, {
       active: false,
       updated: new Date(),
     });
@@ -105,7 +105,7 @@ export class ChamadoService {
     }
 
     return chamado.active &&
-      (chamado.status === "AGUARDANDO" || chamado.userResp?.id === user.id);
+      (chamado.status === "AGUARDANDO" || chamado.user_resp?.id === user.id);
   }
 
   private isDev(user: T.User): boolean {

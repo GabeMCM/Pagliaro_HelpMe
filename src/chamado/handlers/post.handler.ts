@@ -5,24 +5,24 @@ import { UserRepository } from "../../user/user.repo.ts";
 import { ChamadoRepository } from "../chamado.repo.ts";
 import { ChamadoService } from "../chamado.service.ts";
 
-const chamadoService = new ChamadoService(
+const chamado_service = new ChamadoService(
   new ChamadoRepository(new SQLiteAdapter("local.db", "chamados")),
 );
 
-const userRepo = new UserRepository(
+const user_repo = new UserRepository(
   new SQLiteAdapter("local.db", "users"),
 );
 
 export async function createChamado(c: Context) {
   try {
-    const currentUser = await getCurrentUser(c);
+    const current_user = await getCurrentUser(c);
 
-    if (!currentUser.success) {
-      return c.json(currentUser, 403);
+    if (!current_user.success) {
+      return c.json(current_user, 403);
     }
 
     const chamado = await c.req.json<Omit<T.Chamado, "id">>();
-    const result = await chamadoService.create(currentUser.data, chamado);
+    const result = await chamado_service.create(current_user.data, chamado);
 
     if (result.success) {
       return c.json({ ...result, message: T.ResponseMessage[201] }, 201);
@@ -35,13 +35,13 @@ export async function createChamado(c: Context) {
 }
 
 async function getCurrentUser(c: Context): Promise<T.Result<T.User>> {
-  const userId = c.req.header("x-user-id");
+  const user_id = c.req.header("x-user-id");
 
-  if (!userId) {
+  if (!user_id) {
     return fail("Usuário não informado");
   }
 
-  return await userRepo.findById(userId);
+  return await user_repo.findById(user_id);
 }
 
 function requestError(err: unknown): T.Failure {

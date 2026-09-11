@@ -2,62 +2,62 @@ import type * as T from "../global/structure.ts";
 import { UserRepository } from "./user.repo.ts";
 
 export class UserService {
-  constructor(private userRepo: UserRepository) {}
+  constructor(private user_repo: UserRepository) {}
 
   async create(
-    currentUser: T.User,
+    current_user: T.User,
     user: Omit<T.User, "id">,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser) && !this.isGestor(currentUser)) {
+    if (!this.isDev(current_user) && !this.isGestor(current_user)) {
       return this.fail("Usuário sem permissão para criar usuário");
     }
 
-    return await this.userRepo.create(user);
+    return await this.user_repo.create(user);
   }
 
   async findById(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.User>> {
-    if (!this.isDev(currentUser) && !this.isGestor(currentUser) && currentUser.id !== id) {
+    if (!this.isDev(current_user) && !this.isGestor(current_user) && current_user.id !== id) {
       return this.fail("Usuário sem permissão para ver este usuário");
     }
 
-    return await this.userRepo.findById(id);
+    return await this.user_repo.findById(id);
   }
 
   async update(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
     user: Partial<Omit<T.User, "id">>,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser)) {
+    if (!this.isDev(current_user)) {
       return this.fail("Somente Dev pode editar usuário");
     }
 
-    return await this.userRepo.update(id, user);
+    return await this.user_repo.update(id, user);
   }
 
   async delete(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser)) {
+    if (!this.isDev(current_user)) {
       return this.fail("Somente Dev pode apagar usuário");
     }
 
-    return await this.userRepo.delete(id);
+    return await this.user_repo.delete(id);
   }
 
   async deactivate(
-    currentUser: T.User,
+    current_user: T.User,
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(currentUser) && !this.isGestor(currentUser)) {
+    if (!this.isDev(current_user) && !this.isGestor(current_user)) {
       return this.fail("Usuário sem permissão para desativar usuário");
     }
 
-    return await this.userRepo.update(id, { active: false });
+    return await this.user_repo.update(id, { active: false });
   }
 
   private isDev(user: T.User): boolean {

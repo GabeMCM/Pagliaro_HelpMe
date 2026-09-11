@@ -1,9 +1,9 @@
 import { Pool, type PoolClient } from "@db/postgres";
 import type * as T from "./structure.ts";
 
-type PostgresRow = {
-  id: string;
-  data: T.DataBasic | string;
+type ChamadoRow = Omit<T.Chamado, "created" | "updated"> & {
+  created: Date | string;
+  updated: Date | string;
 };
 
 export class PostgresAdapter implements T.DBAdapter {
@@ -13,19 +13,18 @@ export class PostgresAdapter implements T.DBAdapter {
 
   constructor(
     table = "records",
-    databaseUrl = Deno.env.get("DATABASE_URL") ?? "",
+    database_url = Deno.env.get("DATABASE_URL") ?? "",
   ) {
     this.table = this.safeName(table);
-    this.pool = new Pool(databaseUrl, 10, true);
+    this.pool = new Pool(database_url, 10, true);
   }
 
   async findById(id: T.Id): Promise<T.Result<T.FindData>> {
     try {
       return await this.withClient(async (client) => {
-        const result = await client.queryObject<PostgresRow>({
-          text: `SELECT id, data FROM ${this.table} WHERE id = $1`,
+        const result = await client.queryObject({
+          text: this.findByIdSQL(),
           args: [id],
-          fields: ["id", "data"],
         });
 
         const row = result.rows[0];
@@ -43,8 +42,8 @@ export class PostgresAdapter implements T.DBAdapter {
           success: true,
           message: "record found",
           data: {
-            id: row.id,
-            data: this.parseData(row.data),
+            id,
+            data: this.rowToData(row),
           },
           error: null,
         };
@@ -59,10 +58,13 @@ export class PostgresAdapter implements T.DBAdapter {
       return await this.withClient(async (client) => {
         const id = crypto.randomUUID();
 
-        await client.queryArray({
-          text: `INSERT INTO ${this.table} (id, data) VALUES ($1, $2::jsonb)`,
-          args: [id, JSON.stringify(data)],
-        });
+        if (this.table === "users") {
+          await this.saveUser(client, id, data);
+        }
+
+        if (this.table === "chamados") {
+          await this.saveChamado(client, id, data);
+        }
 
         return {
           success: true,
@@ -113,10 +115,13 @@ export class PostgresAdapter implements T.DBAdapter {
       return await this.withClient(async (client) => {
         const next = { ...found.data.data, ...data };
 
-        await client.queryArray({
-          text: `UPDATE ${this.table} SET data = $1::jsonb WHERE id = $2`,
-          args: [JSON.stringify(next), id],
-        });
+        if (this.table === "users") {
+          await this.updateUser(client, id, next);
+        }
+
+        if (this.table === "chamados") {
+          await this.updateChamado(client, id, next);
+        }
 
         return {
           success: true,
@@ -128,6 +133,168 @@ export class PostgresAdapter implements T.DBAdapter {
     } catch (err) {
       return this.error("update error", err);
     }
+  }
+
+  private async saveUser(
+    client: PoolClient,
+    id: T.Id,
+    data: T.DataBasic,
+  ): Promise<void> {
+    const user = data as Omit<T.User, "id">;
+
+    await client.queryArray({
+      text: `
+        INSERT INTO users (id, name, contact, level, active)
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      args: [id, user.name, user.contact, user.level, user.active],
+    });
+  }
+
+  private async saveChamado(
+    client: PoolClient,
+    id: T.Id,
+    data: T.DataBasic,
+  ): Promise<void> {
+    const chamado = data as Omit<T.Chamado, "id">;
+
+    await client.queryArray({
+      text: `
+        INSERT INTO chamados (
+          id,
+          codigo,
+          user_resp_id,
+          user_resp,
+          client,
+          status,
+          active,
+          details,
+          messages,
+          created,
+          updated
+        )
+        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8::jsonb, $9::jsonb, $10, $11)
+      `,
+      args: [
+        id,
+        chamado.codigo,
+        chamado.user_resp?.id ?? null,
+        JSON.stringify(chamado.user_resp),
+        JSON.stringify(chamado.client),
+        chamado.status,
+        chamado.active,
+        JSON.stringify(chamado.details),
+        JSON.stringify(chamado.messages),
+        this.dateValue(chamado.created),
+        this.dateValue(chamado.updated),
+      ],
+    });
+  }
+
+  private async updateUser(
+    client: PoolClient,
+    id: T.Id,
+    data: T.DataBasic,
+  ): Promise<void> {
+    const user = data as T.User;
+
+    await client.queryArray({
+      text: `
+        UPDATE users
+        SET name = $1, contact = $2, level = $3, active = $4
+        WHERE id = $5
+      `,
+      args: [user.name, user.contact, user.level, user.active, id],
+    });
+  }
+
+  private async updateChamado(
+    client: PoolClient,
+    id: T.Id,
+    data: T.DataBasic,
+  ): Promise<void> {
+    const chamado = data as T.Chamado;
+
+    await client.queryArray({
+      text: `
+        UPDATE chamados
+        SET
+          codigo = $1,
+          user_resp_id = $2,
+          user_resp = $3::jsonb,
+          client = $4::jsonb,
+          status = $5,
+          active = $6,
+          details = $7::jsonb,
+          messages = $8::jsonb,
+          created = $9,
+          updated = $10
+        WHERE id = $11
+      `,
+      args: [
+        chamado.codigo,
+        chamado.user_resp?.id ?? null,
+        JSON.stringify(chamado.user_resp),
+        JSON.stringify(chamado.client),
+        chamado.status,
+        chamado.active,
+        JSON.stringify(chamado.details),
+        JSON.stringify(chamado.messages),
+        this.dateValue(chamado.created),
+        this.dateValue(chamado.updated),
+        id,
+      ],
+    });
+  }
+
+  private rowToData(row: unknown): T.DataBasic {
+    if (this.table === "users") {
+      return this.userRowToData(row as T.User);
+    }
+
+    if (this.table === "chamados") {
+      return this.chamadoRowToData(row as ChamadoRow);
+    }
+
+    return {};
+  }
+
+  private userRowToData(row: T.User): T.DataBasic {
+    const { id: _id, ...data } = row;
+
+    return data;
+  }
+
+  private chamadoRowToData(row: ChamadoRow): T.DataBasic {
+    const { id: _id, created, updated, ...data } = row;
+
+    return {
+      ...data,
+      created: new Date(created),
+      updated: new Date(updated),
+    };
+  }
+
+  private findByIdSQL(): string {
+    if (this.table === "chamados") {
+      return `
+        SELECT
+          id,
+          codigo,
+          user_resp,
+          client,
+          status,
+          active,
+          details,
+          messages,
+          created,
+          updated
+        FROM chamados
+        WHERE id = $1
+      `;
+    }
+
+    return `SELECT * FROM ${this.table} WHERE id = $1`;
   }
 
   private async withClient<TData>(
@@ -148,22 +315,45 @@ export class PostgresAdapter implements T.DBAdapter {
       return;
     }
 
-    await client.queryArray(`
-      CREATE TABLE IF NOT EXISTS ${this.table} (
-        id TEXT PRIMARY KEY,
-        data JSONB NOT NULL
-      )
-    `);
+    if (this.table === "users") {
+      await client.queryArray(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          contact TEXT NOT NULL,
+          level TEXT NOT NULL,
+          active BOOLEAN NOT NULL
+        )
+      `);
+    }
+
+    if (this.table === "chamados") {
+      await client.queryArray(`
+        CREATE TABLE IF NOT EXISTS chamados (
+          id TEXT PRIMARY KEY,
+          codigo TEXT NOT NULL UNIQUE,
+          user_resp_id TEXT,
+          user_resp JSONB,
+          client JSONB NOT NULL,
+          status TEXT NOT NULL,
+          active BOOLEAN NOT NULL,
+          details JSONB,
+          messages JSONB NOT NULL,
+          created TIMESTAMP NOT NULL,
+          updated TIMESTAMP NOT NULL
+        )
+      `);
+    }
 
     this.ready = true;
   }
 
-  private parseData(data: T.DataBasic | string): T.DataBasic {
-    if (typeof data === "string") {
-      return JSON.parse(data);
+  private dateValue(date: Date | string): string {
+    if (date instanceof Date) {
+      return date.toISOString();
     }
 
-    return data;
+    return date;
   }
 
   private safeName(name: string): string {

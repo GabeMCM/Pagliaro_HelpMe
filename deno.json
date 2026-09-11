@@ -1,6 +1,6 @@
 {
   "imports": {
-    "@db/postgres": "jsr:@db/postgres",
+    "@db/postgres": "jsr:@db/postgres@^0.19.5",
     "@db/sqlite": "jsr:@db/sqlite",
     "@hono/hono": "jsr:@hono/hono"
   },

@@ -66,7 +66,7 @@ export type User = {
 export type Chamado = {
   id: Id;
   codigo: string; //id externo entregue ao cliente para localizar chamado em consultas
-  userResp: User | null
+  user_resp: User | null
   client: ClientInfo;
   status: Status;
   active: boolean;
