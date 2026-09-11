@@ -1,7 +1,12 @@
 {
+  "imports": {
+    "@db/postgres": "jsr:@db/postgres",
+    "@db/sqlite": "jsr:@db/sqlite",
+    "@hono/hono": "jsr:@hono/hono"
+  },
   "tasks": {
-    "dev": "deno run --watch src/main.ts",
-    "start": "deno run src/main.ts",
+    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env --allow-ffi src/main.ts",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi src/main.ts",
     "check": "deno check src/main.ts"
   }
 }
