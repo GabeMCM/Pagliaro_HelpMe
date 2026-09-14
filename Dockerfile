@@ -2,11 +2,12 @@ FROM denoland/deno:2.9.6
 
 WORKDIR /app
 
-COPY deno.json ./
-COPY src ./src
-RUN deno cache src/main.ts
+COPY --chown=deno:deno deno.json ./
+COPY --chown=deno:deno src ./src
 
-COPY . .
+USER deno
+
+RUN deno cache src/main.ts
 
 EXPOSE 8000
 

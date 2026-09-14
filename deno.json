@@ -2,6 +2,7 @@
   "imports": {
     "@db/postgres": "jsr:@db/postgres@^0.19.5",
     "@db/sqlite": "jsr:@db/sqlite",
+    "@hono/cors": "jsr:@hono/hono/cors",
     "@hono/hono": "jsr:@hono/hono"
   },
   "tasks": {

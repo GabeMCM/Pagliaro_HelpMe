@@ -1,4 +1,5 @@
 import type * as T from "../global/structure.ts";
+import { fail, success } from "../global/result.ts";
 import { ChamadoRepository } from "./chamado.repo.ts";
 
 export class ChamadoService {
@@ -9,7 +10,7 @@ export class ChamadoService {
     chamado: Omit<T.Chamado, "id">,
   ): Promise<T.Result<T.IdData>> {
     if (!current_user.active) {
-      return this.fail("Usuário desativado");
+      return fail("Usuário desativado");
     }
 
     return await this.chamado_repo.create(chamado);
@@ -26,10 +27,27 @@ export class ChamadoService {
     }
 
     if (!this.canView(current_user, chamado.data)) {
-      return this.fail("Usuário sem permissão para ver este chamado");
+      return fail("Usuário sem permissão para ver este chamado");
     }
 
     return chamado;
+  }
+
+  async findAll(current_user: T.User): Promise<T.Result<T.Chamado[]>> {
+    const chamados = await this.chamado_repo.findAll();
+
+    if (!chamados.success) {
+      return chamados;
+    }
+
+    if (this.isDev(current_user) || this.isGestor(current_user)) {
+      return chamados;
+    }
+
+    return success(
+      chamados.message,
+      chamados.data.filter((chamado) => this.canView(current_user, chamado)),
+    );
   }
 
   async update(
@@ -38,7 +56,7 @@ export class ChamadoService {
     chamado: Partial<Omit<T.Chamado, "id">>,
   ): Promise<T.Result<T.IdData>> {
     if (!this.isDev(current_user)) {
-      return this.fail("Somente Dev pode editar chamado");
+      return fail("Somente Dev pode editar chamado");
     }
 
     return await this.chamado_repo.update(id, chamado);
@@ -49,7 +67,7 @@ export class ChamadoService {
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
     if (!this.isDev(current_user)) {
-      return this.fail("Somente Dev pode apagar chamado");
+      return fail("Somente Dev pode apagar chamado");
     }
 
     return await this.chamado_repo.delete(id);
@@ -76,7 +94,7 @@ export class ChamadoService {
     id: T.Id,
   ): Promise<T.Result<T.IdData>> {
     if (!this.isDev(current_user) && !this.isGestor(current_user)) {
-      return this.fail("Usuário sem permissão para desativar chamado");
+      return fail("Usuário sem permissão para desativar chamado");
     }
 
     const chamado = await this.chamado_repo.findById(id);
@@ -86,7 +104,7 @@ export class ChamadoService {
     }
 
     if (chamado.data.status === "EM ANDAMENTO") {
-      return this.fail("Chamado em andamento não pode ser desativado");
+      return fail("Chamado em andamento não pode ser desativado");
     }
 
     return await this.chamado_repo.update(id, {
@@ -114,14 +132,5 @@ export class ChamadoService {
 
   private isGestor(user: T.User): boolean {
     return user.active && user.level === "Gestor";
-  }
-
-  private fail(message: string): T.Failure {
-    return {
-      success: false,
-      message,
-      data: null,
-      error: new Error(message),
-    };
   }
 }

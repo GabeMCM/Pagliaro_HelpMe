@@ -2,19 +2,24 @@ export type DataBasic = Record<string, unknown>;
 export type Id = string;
 export type IdData = { id: Id };
 export type FindData = { id: Id; data: DataBasic };
+export type FindAllData = FindData[];
 export type Status = "EM ANDAMENTO" | "AGUARDANDO" | "FINALIZADO";
 export type UserLevel = "Dev" | "Gestor" | "Basic";
+export type SerializedError = {
+  name: string;
+  message: string;
+};
 
 export type Log = {
-  user: ClientInfo | User
-  data: Date
-  time: Date
-}
+  user: ClientInfo | User;
+  data: Date;
+  time: Date;
+};
 
 export type Messages = {
-  message: string
-  log: Log
-}
+  message: string;
+  log: Log;
+};
 
 export type Row = {
   id: string;
@@ -45,13 +50,13 @@ export type Failure = {
   success: false;
   message: MessageResult;
   data: null;
-  error: Error;
+  error: SerializedError;
 };
 
 export type ClientInfo = {
   name: string;
   contact: string;
-}
+};
 
 export type Result<T> = Success<T> | Failure;
 
@@ -61,12 +66,29 @@ export type User = {
   contact: string;
   level: UserLevel;
   active: boolean;
-}
+  password_hash: string;
+};
+
+export type PublicUser = Omit<User, "password_hash">;
+
+export type CreateUser = Omit<User, "id" | "password_hash"> & {
+  password: string;
+};
+
+export type LoginData = {
+  contact: string;
+  password: string;
+};
+
+export type AuthData = {
+  token: string;
+  user: PublicUser;
+};
 
 export type Chamado = {
   id: Id;
   codigo: string; //id externo entregue ao cliente para localizar chamado em consultas
-  user_resp: User | null
+  user_resp: User | null;
   client: ClientInfo;
   status: Status;
   active: boolean;
@@ -74,11 +96,12 @@ export type Chamado = {
   messages: Record<Id, Messages>;
   created: Date;
   updated: Date;
-}
+};
 
 export interface DBAdapter {
-  findById( id: Id ): Promise<Result<FindData>>;
-  save( data: DataBasic ): Promise<Result<IdData>>;
-  delete( id: Id ): Promise<Result<IdData>>;
+  findById(id: Id): Promise<Result<FindData>>;
+  findAll(): Promise<Result<FindAllData>>;
+  save(data: DataBasic): Promise<Result<IdData>>;
+  delete(id: Id): Promise<Result<IdData>>;
   update(id: Id, data: DataBasic): Promise<Result<IdData>>;
 }

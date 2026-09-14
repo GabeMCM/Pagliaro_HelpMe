@@ -1,7 +1,6 @@
 import { Database } from "@db/sqlite";
+import { fail, success } from "./result.ts";
 import type * as T from "./structure.ts";
-
-
 
 export class SQLiteAdapter implements T.DBAdapter {
   private db: Database;
@@ -26,22 +25,33 @@ export class SQLiteAdapter implements T.DBAdapter {
         .get<T.Row>(id);
 
       if (!row) {
-        return {
-          success: false,
-          message: "id not found",
-          data: null,
-          error: new Error(`id ${id} not found`),
-        };
+        return fail("id not found", `id ${id} not found`);
       }
 
-      return {
-        success: true,
-        message: "record found",
-        data: { id: row.id, data: JSON.parse(row.data) },
-        error: null,
-      };
+      return success("record found", {
+        id: row.id,
+        data: JSON.parse(row.data),
+      });
     } catch (err) {
       return this.error("findById error", err);
+    }
+  }
+
+  async findAll(): Promise<T.Result<T.FindAllData>> {
+    try {
+      const rows = this.db
+        .prepare(`SELECT id, data FROM ${this.table}`)
+        .all<T.Row>();
+
+      return success(
+        "records found",
+        rows.map((row) => ({
+          id: row.id,
+          data: JSON.parse(row.data),
+        })),
+      );
+    } catch (err) {
+      return this.error("findAll error", err);
     }
   }
 
@@ -53,12 +63,7 @@ export class SQLiteAdapter implements T.DBAdapter {
         .prepare(`INSERT INTO ${this.table} (id, data) VALUES (?, ?)`)
         .run(id, JSON.stringify(data));
 
-      return {
-        success: true,
-        message: "record created",
-        data: { id },
-        error: null,
-      };
+      return success("record created", { id });
     } catch (err) {
       return this.error("save error", err);
     }
@@ -76,12 +81,7 @@ export class SQLiteAdapter implements T.DBAdapter {
         .prepare(`DELETE FROM ${this.table} WHERE id = ?`)
         .run(id);
 
-      return {
-        success: true,
-        message: "record deleted",
-        data: { id },
-        error: null,
-      };
+      return success("record deleted", { id });
     } catch (err) {
       return this.error("delete error", err);
     }
@@ -102,12 +102,7 @@ export class SQLiteAdapter implements T.DBAdapter {
         .prepare(`UPDATE ${this.table} SET data = ? WHERE id = ?`)
         .run(JSON.stringify(next), id);
 
-      return {
-        success: true,
-        message: "record updated",
-        data: { id },
-        error: null,
-      };
+      return success("record updated", { id });
     } catch (err) {
       return this.error("update error", err);
     }
@@ -122,11 +117,6 @@ export class SQLiteAdapter implements T.DBAdapter {
   }
 
   private error(message: string, err: unknown): T.Failure {
-    return {
-      success: false,
-      message,
-      data: null,
-      error: err instanceof Error ? err : new Error(String(err)),
-    };
+    return fail(message, err);
   }
 }

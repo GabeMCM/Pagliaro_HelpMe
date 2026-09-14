@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "@db/postgres";
+import { fail, success } from "./result.ts";
 import type * as T from "./structure.ts";
 
 type ChamadoRow = Omit<T.Chamado, "created" | "updated"> & {
@@ -30,26 +31,40 @@ export class PostgresAdapter implements T.DBAdapter {
         const row = result.rows[0];
 
         if (!row) {
-          return {
-            success: false,
-            message: "id not found",
-            data: null,
-            error: new Error(`id ${id} not found`),
-          };
+          return fail("id not found", `id ${id} not found`);
         }
 
-        return {
-          success: true,
-          message: "record found",
-          data: {
-            id,
-            data: this.rowToData(row),
-          },
-          error: null,
-        };
+        return success("record found", {
+          id,
+          data: this.rowToData(row),
+        });
       });
     } catch (err) {
       return this.error("findById error", err);
+    }
+  }
+
+  async findAll(): Promise<T.Result<T.FindAllData>> {
+    try {
+      return await this.withClient(async (client) => {
+        const result = await client.queryObject({
+          text: this.findAllSQL(),
+        });
+
+        return success(
+          "records found",
+          result.rows.map((row) => {
+            const item = row as { id: T.Id };
+
+            return {
+              id: item.id,
+              data: this.rowToData(row),
+            };
+          }),
+        );
+      });
+    } catch (err) {
+      return this.error("findAll error", err);
     }
   }
 
@@ -66,12 +81,7 @@ export class PostgresAdapter implements T.DBAdapter {
           await this.saveChamado(client, id, data);
         }
 
-        return {
-          success: true,
-          message: "record created",
-          data: { id },
-          error: null,
-        };
+        return success("record created", { id });
       });
     } catch (err) {
       return this.error("save error", err);
@@ -92,12 +102,7 @@ export class PostgresAdapter implements T.DBAdapter {
           args: [id],
         });
 
-        return {
-          success: true,
-          message: "record deleted",
-          data: { id },
-          error: null,
-        };
+        return success("record deleted", { id });
       });
     } catch (err) {
       return this.error("delete error", err);
@@ -123,12 +128,7 @@ export class PostgresAdapter implements T.DBAdapter {
           await this.updateChamado(client, id, next);
         }
 
-        return {
-          success: true,
-          message: "record updated",
-          data: { id },
-          error: null,
-        };
+        return success("record updated", { id });
       });
     } catch (err) {
       return this.error("update error", err);
@@ -144,10 +144,17 @@ export class PostgresAdapter implements T.DBAdapter {
 
     await client.queryArray({
       text: `
-        INSERT INTO users (id, name, contact, level, active)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO users (id, name, contact, level, active, password_hash)
+        VALUES ($1, $2, $3, $4, $5, $6)
       `,
-      args: [id, user.name, user.contact, user.level, user.active],
+      args: [
+        id,
+        user.name,
+        user.contact,
+        user.level,
+        user.active,
+        user.password_hash,
+      ],
     });
   }
 
@@ -201,10 +208,17 @@ export class PostgresAdapter implements T.DBAdapter {
     await client.queryArray({
       text: `
         UPDATE users
-        SET name = $1, contact = $2, level = $3, active = $4
-        WHERE id = $5
+        SET name = $1, contact = $2, level = $3, active = $4, password_hash = $5
+        WHERE id = $6
       `,
-      args: [user.name, user.contact, user.level, user.active, id],
+      args: [
+        user.name,
+        user.contact,
+        user.level,
+        user.active,
+        user.password_hash,
+        id,
+      ],
     });
   }
 
@@ -297,6 +311,27 @@ export class PostgresAdapter implements T.DBAdapter {
     return `SELECT * FROM ${this.table} WHERE id = $1`;
   }
 
+  private findAllSQL(): string {
+    if (this.table === "chamados") {
+      return `
+        SELECT
+          id,
+          codigo,
+          user_resp,
+          client,
+          status,
+          active,
+          details,
+          messages,
+          created,
+          updated
+        FROM chamados
+      `;
+    }
+
+    return `SELECT * FROM ${this.table}`;
+  }
+
   private async withClient<TData>(
     action: (client: PoolClient) => Promise<TData>,
   ): Promise<TData> {
@@ -322,7 +357,8 @@ export class PostgresAdapter implements T.DBAdapter {
           name TEXT NOT NULL,
           contact TEXT NOT NULL,
           level TEXT NOT NULL,
-          active BOOLEAN NOT NULL
+          active BOOLEAN NOT NULL,
+          password_hash TEXT NOT NULL
         )
       `);
     }
@@ -365,11 +401,6 @@ export class PostgresAdapter implements T.DBAdapter {
   }
 
   private error(message: string, err: unknown): T.Failure {
-    return {
-      success: false,
-      message,
-      data: null,
-      error: err instanceof Error ? err : new Error(String(err)),
-    };
+    return fail(message, err);
   }
 }

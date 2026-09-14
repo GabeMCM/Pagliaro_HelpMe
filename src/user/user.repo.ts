@@ -1,4 +1,5 @@
 import type * as T from "../global/structure.ts";
+import { success } from "../global/result.ts";
 
 export class UserRepository {
   constructor(private db: T.DBAdapter) {}
@@ -14,15 +15,26 @@ export class UserRepository {
       return result;
     }
 
-    return {
-      success: true,
-      message: result.message,
-      data: {
-        id: result.data.id,
-        ...result.data.data,
-      } as T.User,
-      error: null,
-    };
+    return success(result.message, {
+      id: result.data.id,
+      ...result.data.data,
+    } as T.User);
+  }
+
+  async findAll(): Promise<T.Result<T.User[]>> {
+    const result = await this.db.findAll();
+
+    if (!result.success) {
+      return result;
+    }
+
+    return success(
+      result.message,
+      result.data.map((item) => ({
+        id: item.id,
+        ...item.data,
+      } as T.User)),
+    );
   }
 
   async delete(id: T.Id): Promise<T.Result<T.IdData>> {
