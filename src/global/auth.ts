@@ -30,7 +30,7 @@ export async function userIdFromAuthorization(
   authorization: string | undefined,
 ): Promise<T.Result<{ user_id: T.Id }>> {
   if (!authorization?.startsWith("Bearer ")) {
-    return fail("Token não informado");
+    return fail("Token não informado", 401);
   }
 
   return await verifyToken(authorization.replace("Bearer ", ""));
@@ -43,24 +43,29 @@ async function verifyToken(
     const [header, payload, signature] = token.split(".");
 
     if (!header || !payload || !signature) {
-      return fail("Token inválido");
+      return fail("Token inválido", 401);
     }
 
     const expected_signature = await sign(`${header}.${payload}`);
 
     if (signature !== expected_signature) {
-      return fail("Token inválido");
+      return fail("Token inválido", 401);
     }
 
     const data = JSON.parse(base64UrlDecode(payload)) as TokenPayload;
 
+    if (typeof data.user_id !== "string" || typeof data.exp !== "number") {
+      return fail("Token inválido", 401);
+    }
+
     if (data.exp < Date.now()) {
-      return fail("Token expirado");
+      return fail("Token expirado", 401);
     }
 
     return success("Token válido", { user_id: data.user_id });
   } catch (err) {
-    return fail("Token inválido", err);
+    console.error(err);
+    return fail("Token inválido", 401);
   }
 }
 

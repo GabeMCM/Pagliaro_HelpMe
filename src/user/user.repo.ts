@@ -4,7 +4,9 @@ import { success } from "../global/result.ts";
 export class UserRepository {
   constructor(private db: T.DBAdapter) {}
 
-  async create(user: Omit<T.User, "id">): Promise<T.Result<T.IdData>> {
+  async create(
+    user: Omit<T.User, "id" | "version">,
+  ): Promise<T.Result<T.VersionData>> {
     return await this.db.save(user as T.DataBasic);
   }
 
@@ -21,8 +23,24 @@ export class UserRepository {
     } as T.User);
   }
 
-  async findAll(): Promise<T.Result<T.User[]>> {
-    const result = await this.db.findAll();
+  async findByContact(contact: string): Promise<T.Result<T.User>> {
+    const result = await this.db.findOne({ contact });
+
+    if (!result.success) {
+      return result;
+    }
+
+    return success(result.message, {
+      id: result.data.id,
+      ...result.data.data,
+    } as T.User);
+  }
+
+  async findAll(
+    limit = 50,
+    offset = 0,
+  ): Promise<T.Result<T.User[]>> {
+    const result = await this.db.findAll({ limit, offset });
 
     if (!result.success) {
       return result;
@@ -43,8 +61,13 @@ export class UserRepository {
 
   async update(
     id: T.Id,
-    user: Partial<Omit<T.User, "id">>,
-  ): Promise<T.Result<T.IdData>> {
-    return await this.db.update(id, user as T.DataBasic);
+    user: Partial<Omit<T.User, "id" | "version">>,
+    expected_version: number,
+  ): Promise<T.Result<T.VersionData>> {
+    return await this.db.update(
+      id,
+      user as T.DataBasic,
+      expected_version,
+    );
   }
 }

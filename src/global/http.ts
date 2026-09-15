@@ -1,6 +1,7 @@
 import type { Context } from "@hono/hono";
 import { UserRepository } from "../user/user.repo.ts";
 import { userIdFromAuthorization } from "./auth.ts";
+import { fail, serializeData, success } from "./result.ts";
 import * as T from "./structure.ts";
 
 export { fail, requestError } from "./result.ts";
@@ -17,19 +18,19 @@ export async function getCurrentUser(
     return auth_result;
   }
 
-  return await user_repo.findById(auth_result.data.user_id);
+  const user_result = await user_repo.findById(auth_result.data.user_id);
+
+  if (!user_result.success) {
+    return fail("Usuário autenticado não encontrado", 401);
+  }
+
+  if (!user_result.data.active) {
+    return fail("Usuário desativado", 403);
+  }
+
+  return success(user_result.message, user_result.data);
 }
 
-export function statusFromResult(
-  result: T.Failure,
-): keyof typeof T.ResponseMessage {
-  if (result.message === "id not found") {
-    return 404;
-  }
-
-  if (result.message === "Chamado em andamento não pode ser desativado") {
-    return 400;
-  }
-
-  return 403;
+export function respond<TData>(c: Context, result: T.Result<TData>) {
+  return c.json(serializeData(result), result.status);
 }

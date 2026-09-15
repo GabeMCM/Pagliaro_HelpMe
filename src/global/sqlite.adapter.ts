@@ -1,5 +1,5 @@
 import { Database } from "@db/sqlite";
-import { fail, success } from "./result.ts";
+import { fail, internalError, success } from "./result.ts";
 import type * as T from "./structure.ts";
 
 export class SQLiteAdapter implements T.DBAdapter {
@@ -19,104 +19,143 @@ export class SQLiteAdapter implements T.DBAdapter {
   }
 
   async findById(id: string): Promise<T.Result<T.FindData>> {
+    await Promise.resolve();
+
     try {
       const row = this.db
         .prepare(`SELECT id, data FROM ${this.table} WHERE id = ?`)
         .get<T.Row>(id);
 
       if (!row) {
-        return fail("id not found", `id ${id} not found`);
+        return fail("Registro não encontrado", 404);
       }
 
-      return success("record found", {
+      return success("Registro encontrado", {
         id: row.id,
         data: JSON.parse(row.data),
       });
     } catch (err) {
-      return this.error("findById error", err);
+      return internalError(err);
     }
   }
 
-  async findAll(): Promise<T.Result<T.FindAllData>> {
+  async findOne(
+    filters: Record<string, T.QueryValue>,
+  ): Promise<T.Result<T.FindData>> {
+    const result = await this.findAll({ filters, limit: 1 });
+
+    if (!result.success) {
+      return result;
+    }
+
+    const item = result.data[0];
+
+    return item
+      ? success("Registro encontrado", item)
+      : fail("Registro não encontrado", 404);
+  }
+
+  async findAll(
+    options: T.FindOptions = {},
+  ): Promise<T.Result<T.FindAllData>> {
+    await Promise.resolve();
+
     try {
+      const filters = options.filters ?? {};
+      const limit = options.limit ?? 50;
+      const offset = options.offset ?? 0;
       const rows = this.db
         .prepare(`SELECT id, data FROM ${this.table}`)
         .all<T.Row>();
-
-      return success(
-        "records found",
-        rows.map((row) => ({
+      const data = rows
+        .map((row) => ({
           id: row.id,
-          data: JSON.parse(row.data),
-        })),
-      );
+          data: JSON.parse(row.data) as T.DataBasic,
+        }))
+        .filter((item) =>
+          Object.entries(filters).every(([key, value]) =>
+            key === "id" ? item.id === value : item.data[key] === value
+          )
+        )
+        .slice(offset, offset + limit);
+
+      return success("Registros encontrados", data);
     } catch (err) {
-      return this.error("findAll error", err);
+      return internalError(err);
     }
   }
 
-  async save(data: T.DataBasic): Promise<T.Result<T.IdData>> {
+  async save(data: T.DataBasic): Promise<T.Result<T.VersionData>> {
+    await Promise.resolve();
+
     try {
       const id = crypto.randomUUID();
+      const version = 1;
 
       this.db
         .prepare(`INSERT INTO ${this.table} (id, data) VALUES (?, ?)`)
-        .run(id, JSON.stringify(data));
+        .run(id, JSON.stringify({ ...data, version }));
 
-      return success("record created", { id });
+      return success("Registro criado", { id, version }, 201);
     } catch (err) {
-      return this.error("save error", err);
+      return internalError(err);
     }
   }
 
   async delete(id: string): Promise<T.Result<T.IdData>> {
+    const found = await this.findById(id);
+
+    if (!found.success) {
+      return found;
+    }
+
     try {
-      const found = await this.findById(id);
-
-      if (!found.success) {
-        return found;
-      }
-
       this.db
         .prepare(`DELETE FROM ${this.table} WHERE id = ?`)
         .run(id);
 
-      return success("record deleted", { id });
+      return success("Registro apagado", { id });
     } catch (err) {
-      return this.error("delete error", err);
+      return internalError(err);
     }
   }
 
-  async update(id: string, data: T.DataBasic): Promise<T.Result<T.IdData>> {
+  async update(
+    id: string,
+    data: T.DataBasic,
+    expected_version: number,
+  ): Promise<T.Result<T.VersionData>> {
+    const found = await this.findById(id);
+
+    if (!found.success) {
+      return found;
+    }
+
+    const current_version = found.data.data.version;
+
+    if (current_version !== expected_version) {
+      return fail("Registro alterado por outra operação", 409);
+    }
+
     try {
-      const found = await this.findById(id);
-
-      if (!found.success) {
-        return found;
-      }
-
-      const current = found.data.data;
-      const next = { ...current, ...data };
+      const version = expected_version + 1;
+      const next = { ...found.data.data, ...data, version };
 
       this.db
         .prepare(`UPDATE ${this.table} SET data = ? WHERE id = ?`)
         .run(JSON.stringify(next), id);
 
-      return success("record updated", { id });
+      return success("Registro atualizado", { id, version });
     } catch (err) {
-      return this.error("update error", err);
+      return internalError(err);
     }
   }
 
   private safeName(name: string): string {
     if (!/^[a-zA-Z0-9_]+$/.test(name)) {
-      throw new Error("invalid name");
+      throw new Error("Nome inválido");
     }
 
     return name;
-  }
-
-  private error(message: string, err: unknown): T.Failure {
-    return fail(message, err);
   }
 }

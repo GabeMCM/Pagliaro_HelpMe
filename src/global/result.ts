@@ -1,23 +1,27 @@
 import * as T from "./structure.ts";
 
 export function success<TData>(
-  message: T.MessageResult,
+  message: string,
   data: TData,
+  status: T.SuccessStatus = 200,
 ): T.Success<TData> {
   return {
     success: true,
+    status,
     message,
-    data: serializeData(data) as TData,
+    data,
     error: null,
   };
 }
 
 export function fail(
-  message: T.MessageResult,
+  message: string,
+  status: T.FailureStatus = 400,
   err: unknown = new Error(message),
 ): T.Failure {
   return {
     success: false,
+    status,
     message,
     data: null,
     error: serializeError(err),
@@ -25,7 +29,16 @@ export function fail(
 }
 
 export function requestError(err: unknown): T.Failure {
-  return fail(T.ResponseMessage[400], err);
+  if (err instanceof SyntaxError) {
+    return fail("JSON inválido", 400, err);
+  }
+
+  return internalError(err);
+}
+
+export function internalError(err: unknown): T.Failure {
+  console.error(err);
+  return fail(T.ResponseMessage[500], 500);
 }
 
 export function serializeError(err: unknown): T.SerializedError {
@@ -67,6 +80,3 @@ export function serializeData(data: unknown): unknown {
 
   return data;
 }
-
-
-

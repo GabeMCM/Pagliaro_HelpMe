@@ -1,9 +1,9 @@
 import type { Context } from "@hono/hono";
-import { requestError } from "../../global/http.ts";
+import { requestError, respond } from "../../global/http.ts";
 import { PostgresAdapter } from "../../global/postgres.adapter.ts";
-import * as T from "../../global/structure.ts";
 import { UserRepository } from "../../user/user.repo.ts";
 import { AuthService } from "../auth.service.ts";
+import { validateLogin } from "../auth.validation.ts";
 
 const auth_service = new AuthService(
   new UserRepository(new PostgresAdapter("users")),
@@ -11,15 +11,14 @@ const auth_service = new AuthService(
 
 export async function login(c: Context) {
   try {
-    const data = await c.req.json<T.LoginData>();
-    const result = await auth_service.login(data);
+    const data = validateLogin(await c.req.json<unknown>());
 
-    if (result.success) {
-      return c.json(result, 200);
+    if (!data.success) {
+      return respond(c, data);
     }
 
-    return c.json(result, 403);
+    return respond(c, await auth_service.login(data.data));
   } catch (err) {
-    return c.json(requestError(err), 400);
+    return respond(c, requestError(err));
   }
 }

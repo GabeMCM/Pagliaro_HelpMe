@@ -1,38 +1,32 @@
 import { createToken, hashPassword } from "../global/auth.ts";
 import { fail, success } from "../global/result.ts";
 import * as T from "../global/structure.ts";
+import { toPublicUser } from "../user/user.mapper.ts";
 import { UserRepository } from "../user/user.repo.ts";
 
 export class AuthService {
   constructor(private user_repo: UserRepository) {}
 
   async login(data: T.LoginData): Promise<T.Result<T.AuthData>> {
-    const users = await this.user_repo.findAll();
+    const user = await this.user_repo.findByContact(data.contact);
 
-    if (!users.success) {
-      return users;
+    if (!user.success) {
+      if (user.status === 404) {
+        return fail("Credenciais inválidas", 401);
+      }
+
+      return user;
     }
 
     const password_hash = await hashPassword(data.password);
-    const user = users.data.find((item) =>
-      item.contact === data.contact &&
-      item.password_hash === password_hash &&
-      item.active
-    );
 
-    if (!user) {
-      return fail("Credenciais inválidas");
+    if (user.data.password_hash !== password_hash || !user.data.active) {
+      return fail("Credenciais inválidas", 401);
     }
 
     return success(T.ResponseMessage[200], {
-      token: await createToken(user.id),
-      user: publicUser(user),
+      token: await createToken(user.data.id),
+      user: toPublicUser(user.data),
     });
   }
-}
-
-function publicUser(user: T.User): T.PublicUser {
-  const { password_hash: _password_hash, ...data } = user;
-
-  return data;
 }

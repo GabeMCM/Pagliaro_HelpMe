@@ -3,12 +3,12 @@ import {
   fail,
   getCurrentUser,
   requestError,
-  statusFromResult,
+  respond,
 } from "../../global/http.ts";
 import { PostgresAdapter } from "../../global/postgres.adapter.ts";
-import * as T from "../../global/structure.ts";
 import { UserRepository } from "../user.repo.ts";
 import { UserService } from "../user.service.ts";
+import { validateUpdateUser } from "../user.validation.ts";
 
 const user_repo = new UserRepository(
   new PostgresAdapter("users"),
@@ -21,28 +21,27 @@ export async function updateUser(c: Context) {
     const current_user = await getCurrentUser(c, user_repo);
 
     if (!current_user.success) {
-      return c.json(current_user, 403);
+      return respond(c, current_user);
     }
 
     const id = c.req.param("id");
 
     if (!id) {
-      return c.json(fail("Id não informado"), 400);
+      return respond(c, fail("Id não informado", 400));
     }
 
-    const user = await c.req.json<Partial<Omit<T.User, "id">>>();
-    const result = await user_service.update(current_user.data, id, user);
+    const user = validateUpdateUser(await c.req.json<unknown>());
 
-    if (result.success) {
-      return c.json({ ...result, message: T.ResponseMessage[200] }, 200);
+    if (!user.success) {
+      return respond(c, user);
     }
 
-    return c.json(
-      { ...result, message: result.message },
-      statusFromResult(result),
+    return respond(
+      c,
+      await user_service.update(current_user.data, id, user.data),
     );
   } catch (err) {
-    return c.json(requestError(err), 400);
+    return respond(c, requestError(err));
   }
 }
 
@@ -50,23 +49,14 @@ export async function deactivateUser(c: Context) {
   const current_user = await getCurrentUser(c, user_repo);
 
   if (!current_user.success) {
-    return c.json(current_user, 403);
+    return respond(c, current_user);
   }
 
   const id = c.req.param("id");
 
   if (!id) {
-    return c.json(fail("Id não informado"), 400);
+    return respond(c, fail("Id não informado", 400));
   }
 
-  const result = await user_service.deactivate(current_user.data, id);
-
-  if (result.success) {
-    return c.json({ ...result, message: T.ResponseMessage[200] }, 200);
-  }
-
-  return c.json(
-    { ...result, message: result.message },
-    statusFromResult(result),
-  );
+  return respond(c, await user_service.deactivate(current_user.data, id));
 }

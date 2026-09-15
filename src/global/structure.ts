@@ -1,64 +1,52 @@
 export type DataBasic = Record<string, unknown>;
 export type Id = string;
 export type IdData = { id: Id };
+export type VersionData = IdData & { version: number };
 export type FindData = { id: Id; data: DataBasic };
 export type FindAllData = FindData[];
 export type Status = "EM ANDAMENTO" | "AGUARDANDO" | "FINALIZADO";
 export type UserLevel = "Dev" | "Gestor" | "Basic";
+export type SuccessStatus = 200 | 201;
+export type FailureStatus = 400 | 401 | 403 | 404 | 409 | 500;
+
 export type SerializedError = {
   name: string;
   message: string;
-};
-
-export type Log = {
-  user: ClientInfo | User;
-  data: Date;
-  time: Date;
-};
-
-export type Messages = {
-  message: string;
-  log: Log;
-};
-
-export type Row = {
-  id: string;
-  data: string;
 };
 
 export const ResponseMessage = {
   200: "Operação realizada com sucesso",
   201: "Registro criado com sucesso",
   400: "Erro na requisição",
+  401: "Autenticação necessária",
   403: "Usuário sem permissão",
   404: "Registro não encontrado",
+  409: "Registro alterado por outra operação",
   500: "Erro interno",
 } as const;
 
-export type MessageResult =
-  | typeof ResponseMessage[keyof typeof ResponseMessage]
-  | string;
-
 export type Success<T> = {
   success: true;
-  message: MessageResult;
+  status: SuccessStatus;
+  message: string;
   data: T;
   error: null;
 };
 
 export type Failure = {
   success: false;
-  message: MessageResult;
+  status: FailureStatus;
+  message: string;
   data: null;
   error: SerializedError;
 };
+
+export type Result<T> = Success<T> | Failure;
 
 export type ClientInfo = {
   name: string;
   contact: string;
 };
-
-export type Result<T> = Success<T> | Failure;
 
 export type User = {
   id: Id;
@@ -67,13 +55,24 @@ export type User = {
   level: UserLevel;
   active: boolean;
   password_hash: string;
+  version: number;
 };
 
 export type PublicUser = Omit<User, "password_hash">;
+export type UserActor = Pick<PublicUser, "id" | "name" | "contact" | "level">;
+export type Actor = ClientInfo | UserActor;
 
-export type CreateUser = Omit<User, "id" | "password_hash"> & {
+export type CreateUser = Omit<User, "id" | "password_hash" | "version"> & {
   password: string;
 };
+
+export type UpdateUser =
+  & Partial<
+    Pick<User, "name" | "contact" | "level" | "active">
+  >
+  & {
+    password?: string;
+  };
 
 export type LoginData = {
   contact: string;
@@ -85,23 +84,82 @@ export type AuthData = {
   user: PublicUser;
 };
 
+export type LogAction =
+  | "CRIADO"
+  | "CAPTURADO"
+  | "MENSAGEM ENVIADA"
+  | "ATUALIZADO"
+  | "FINALIZADO"
+  | "DESATIVADO"
+  | "APAGADO";
+
+export type ChamadoLog = {
+  id: Id;
+  chamado_id: Id;
+  action: LogAction;
+  message: string;
+  user: Actor;
+  created: Date;
+};
+
+export type ChamadoMessage = {
+  id: Id;
+  chamado_id: Id;
+  message: string;
+  user: Actor;
+  created: Date;
+};
+
 export type Chamado = {
   id: Id;
-  codigo: string; //id externo entregue ao cliente para localizar chamado em consultas
-  user_resp: User | null;
+  codigo: string;
+  user_resp: PublicUser | null;
   client: ClientInfo;
   status: Status;
   active: boolean;
   details: string[] | null;
-  messages: Record<Id, Messages>;
+  messages: ChamadoMessage[];
   created: Date;
   updated: Date;
+  version: number;
+};
+
+export type ChamadoSummary = Omit<Chamado, "messages">;
+
+export type CreateChamado =
+  & Omit<
+    Chamado,
+    "id" | "version" | "messages"
+  >
+  & {
+    messages: CreateMessage[];
+  };
+export type UpdateChamado = Partial<
+  Omit<Chamado, "id" | "messages" | "version">
+>;
+export type CreateMessage = { message: string };
+
+export type QueryValue = string | number | boolean | null;
+export type FindOptions = {
+  filters?: Record<string, QueryValue>;
+  limit?: number;
+  offset?: number;
+};
+
+export type Row = {
+  id: string;
+  data: string;
 };
 
 export interface DBAdapter {
   findById(id: Id): Promise<Result<FindData>>;
-  findAll(): Promise<Result<FindAllData>>;
-  save(data: DataBasic): Promise<Result<IdData>>;
+  findOne(filters: Record<string, QueryValue>): Promise<Result<FindData>>;
+  findAll(options?: FindOptions): Promise<Result<FindAllData>>;
+  save(data: DataBasic): Promise<Result<VersionData>>;
   delete(id: Id): Promise<Result<IdData>>;
-  update(id: Id, data: DataBasic): Promise<Result<IdData>>;
+  update(
+    id: Id,
+    data: DataBasic,
+    expected_version: number,
+  ): Promise<Result<VersionData>>;
 }

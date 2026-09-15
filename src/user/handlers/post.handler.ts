@@ -1,9 +1,9 @@
 import type { Context } from "@hono/hono";
-import { getCurrentUser, requestError } from "../../global/http.ts";
+import { getCurrentUser, requestError, respond } from "../../global/http.ts";
 import { PostgresAdapter } from "../../global/postgres.adapter.ts";
-import * as T from "../../global/structure.ts";
 import { UserRepository } from "../user.repo.ts";
 import { UserService } from "../user.service.ts";
+import { validateCreateUser } from "../user.validation.ts";
 
 const user_repo = new UserRepository(
   new PostgresAdapter("users"),
@@ -16,18 +16,17 @@ export async function createUser(c: Context) {
     const current_user = await getCurrentUser(c, user_repo);
 
     if (!current_user.success) {
-      return c.json(current_user, 403);
+      return respond(c, current_user);
     }
 
-    const user = await c.req.json<T.CreateUser>();
-    const result = await user_service.create(current_user.data, user);
+    const user = validateCreateUser(await c.req.json<unknown>());
 
-    if (result.success) {
-      return c.json({ ...result, message: T.ResponseMessage[201] }, 201);
+    if (!user.success) {
+      return respond(c, user);
     }
 
-    return c.json({ ...result, message: result.message }, 403);
+    return respond(c, await user_service.create(current_user.data, user.data));
   } catch (err) {
-    return c.json(requestError(err), 400);
+    return respond(c, requestError(err));
   }
 }

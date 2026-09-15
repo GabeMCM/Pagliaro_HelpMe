@@ -2,6 +2,7 @@ import { Hono } from "@hono/hono";
 import { cors } from "@hono/cors";
 import { authRoute } from "./auth/auth.route.ts";
 import { chamadoRoute } from "./chamado/chamado.route.ts";
+import { runMigrations } from "./global/migrations.ts";
 import { userRoute } from "./user/user.route.ts";
 
 const app = new Hono();
@@ -18,5 +19,7 @@ app.get("/", (c) => c.text("Hello"));
 app.route("/auth", authRoute);
 app.route("/chamado", chamadoRoute);
 app.route("/user", userRoute);
+
+await runMigrations();
 
 Deno.serve(app.fetch);
