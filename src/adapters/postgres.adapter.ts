@@ -1,22 +1,13 @@
 import { Pool, type PoolClient } from "@db/postgres";
-import { fail, success } from "./result.ts";
-import * as T from "./structure.ts";
+import { fail, internalError, success } from "../global/result.ts";
+import type * as T from "../global/structure.ts";
 
-export type TableName =
-  | "users"
-  | "chamados"
-  | "chamado_messages"
-  | "chamado_logs";
+const database_url = Deno.env.get("DATABASE_URL");
+if (!database_url) throw new Error("DATABASE_URL não informada");
+export const pool = new Pool(database_url, 10, true);
 
 export class PostgresAdapter implements T.DBAdapter {
-  private pool: Pool;
-
-  constructor(
-    private table: TableName,
-    database_url = Deno.env.get("DATABASE_URL") ?? "",
-  ) {
-    this.pool = new Pool(database_url, 10, true);
-  }
+  constructor(private table: T.TableName) {}
 
   async findById(id: T.Id): Promise<T.Result<T.FindData>> {
     try {
@@ -65,7 +56,7 @@ export class PostgresAdapter implements T.DBAdapter {
     try {
       return await this.withClient(async (client) => {
         const filters = options.filters ?? {};
-        const limit = options.limit ?? 50;
+        const limit = options.limit === undefined ? 50 : options.limit;
         const offset = options.offset ?? 0;
         const query = this.buildFindAllQuery(filters, limit, offset);
         const result = await client.queryObject(query);
@@ -109,31 +100,12 @@ export class PostgresAdapter implements T.DBAdapter {
     }
   }
 
-  async delete(id: T.Id): Promise<T.Result<T.IdData>> {
-    try {
-      return await this.withClient(async (client) => {
-        const result = await client.queryObject<{ id: T.Id }>({
-          text: `DELETE FROM ${this.table} WHERE id = $1 RETURNING id`,
-          args: [id],
-        });
-
-        if (result.rows.length === 0) {
-          return fail("Registro não encontrado", 404);
-        }
-
-        return success("Registro apagado", { id });
-      });
-    } catch (err) {
-      return this.databaseError(err);
-    }
-  }
-
   async update(
     id: T.Id,
     data: T.DataBasic,
     expected_version: number,
   ): Promise<T.Result<T.VersionData>> {
-    if (this.table === "chamado_messages" || this.table === "chamado_logs") {
+    if (this.table !== "chamados") {
       return fail("Este registro não pode ser alterado", 400);
     }
 
@@ -299,28 +271,38 @@ export class PostgresAdapter implements T.DBAdapter {
   }
 
   private buildFindAllQuery(
-    filters: Record<string, T.QueryValue>,
-    limit: number,
+    filters: T.FindFilters,
+    limit: number | null,
     offset: number,
   ): { text: string; args: T.QueryValue[] } {
     const allowed_columns = this.filterColumns();
     const clauses: string[] = [];
     const args: T.QueryValue[] = [];
 
-    for (const [field, value] of Object.entries(filters)) {
-      if (!allowed_columns.includes(field)) {
-        throw new Error(`Filtro ${field} não permitido para ${this.table}`);
+    const groups = Array.isArray(filters) ? filters : [filters];
+
+    for (const group of groups) {
+      const conditions: string[] = [];
+
+      for (const [field, value] of Object.entries(group)) {
+        if (!allowed_columns.includes(field)) {
+          throw new Error(`Filtro ${field} não permitido para ${this.table}`);
+        }
+
+        if (value === null) {
+          conditions.push(`t.${field} IS NULL`);
+        } else {
+          args.push(value);
+          conditions.push(`t.${field} = $${args.length}`);
+        }
       }
 
-      if (value === null) {
-        clauses.push(`t.${field} IS NULL`);
-      } else {
-        args.push(value);
-        clauses.push(`t.${field} = $${args.length}`);
-      }
+      clauses.push(
+        conditions.length > 0 ? `(${conditions.join(" AND ")})` : "TRUE",
+      );
     }
 
-    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" OR ")}` : "";
     args.push(limit);
     const limit_position = args.length;
     args.push(offset);
@@ -353,9 +335,8 @@ export class PostgresAdapter implements T.DBAdapter {
         return fail(`Campo ${field} não pode ser alterado`, 400);
       }
 
-      args.push(this.databaseValue(field, value));
-      const cast = field === "details" ? "::jsonb" : "";
-      sets.push(`${field} = $${args.length}${cast}`);
+      args.push(field === "updated" ? this.dateValue(value) : value);
+      sets.push(`${field} = $${args.length}`);
     }
 
     args.push(id, expected_version);
@@ -521,21 +502,7 @@ export class PostgresAdapter implements T.DBAdapter {
   }
 
   private updateColumns(): string[] {
-    if (this.table === "users") {
-      return ["name", "contact", "level", "active", "password_hash"];
-    }
-
-    return [
-      "codigo",
-      "user_resp_id",
-      "client_name",
-      "client_contact",
-      "status",
-      "active",
-      "details",
-      "created",
-      "updated",
-    ];
+    return ["user_resp_id", "status", "updated"];
   }
 
   private orderSQL(): string {
@@ -548,18 +515,6 @@ export class PostgresAdapter implements T.DBAdapter {
     }
 
     return " ORDER BY t.created, t.id";
-  }
-
-  private databaseValue(field: string, value: unknown): unknown {
-    if (field === "details") {
-      return JSON.stringify(value);
-    }
-
-    if (field === "created" || field === "updated") {
-      return this.dateValue(value);
-    }
-
-    return value;
   }
 
   private dateValue(value: unknown): string {
@@ -587,7 +542,7 @@ export class PostgresAdapter implements T.DBAdapter {
   private async withClient<TData>(
     action: (client: PoolClient) => Promise<TData>,
   ): Promise<TData> {
-    const client = await this.pool.connect();
+    const client = await pool.connect();
 
     try {
       return await action(client);
@@ -597,8 +552,6 @@ export class PostgresAdapter implements T.DBAdapter {
   }
 
   private databaseError(err: unknown): T.Failure {
-    console.error(err);
-
     const code = this.errorCode(err);
 
     if (code === "23505") {
@@ -609,7 +562,7 @@ export class PostgresAdapter implements T.DBAdapter {
       return fail("Dados inválidos para persistência", 400);
     }
 
-    return fail(T.ResponseMessage[500], 500);
+    return internalError(err);
   }
 
   private errorCode(err: unknown): string | null {

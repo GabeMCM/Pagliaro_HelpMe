@@ -1,15 +1,15 @@
 import type * as T from "../global/structure.ts";
 import { success } from "../global/result.ts";
-import { ChamadoMessageRepository } from "./chamado-message.repo.ts";
 
 export class ChamadoRepository {
   constructor(
     private db: T.DBAdapter,
-    private message_repo: ChamadoMessageRepository,
+    private message_db: T.DBAdapter,
+    private log_db: T.DBAdapter,
   ) {}
 
   async create(
-    chamado: T.CreateChamado,
+    chamado: T.NewChamado,
   ): Promise<T.Result<T.VersionData>> {
     return await this.db.save({
       codigo: chamado.codigo,
@@ -55,7 +55,7 @@ export class ChamadoRepository {
   }
 
   async findAll(
-    filters: Record<string, T.QueryValue> = {},
+    filters: T.FindFilters = {},
     limit = 50,
     offset = 0,
   ): Promise<T.Result<T.ChamadoSummary[]>> {
@@ -71,10 +71,6 @@ export class ChamadoRepository {
     );
   }
 
-  async delete(id: T.Id): Promise<T.Result<T.IdData>> {
-    return await this.db.delete(id);
-  }
-
   async update(
     id: T.Id,
     chamado: T.UpdateChamado,
@@ -82,29 +78,60 @@ export class ChamadoRepository {
   ): Promise<T.Result<T.VersionData>> {
     const data: T.DataBasic = {};
 
-    if (chamado.codigo !== undefined) data.codigo = chamado.codigo;
     if (chamado.status !== undefined) data.status = chamado.status;
-    if (chamado.active !== undefined) data.active = chamado.active;
-    if (chamado.details !== undefined) data.details = chamado.details;
-    if (chamado.created !== undefined) data.created = chamado.created;
     if (chamado.updated !== undefined) data.updated = chamado.updated;
 
     if (chamado.user_resp !== undefined) {
       data.user_resp_id = chamado.user_resp?.id ?? null;
     }
 
-    if (chamado.client !== undefined) {
-      data.client_name = chamado.client.name;
-      data.client_contact = chamado.client.contact;
-    }
-
     return await this.db.update(id, data, expected_version);
+  }
+
+  async createMessage(
+    chamado_id: T.Id,
+    message: string,
+    user: T.Actor,
+  ): Promise<T.Result<T.IdData>> {
+    return await this.message_db.save({
+      chamado_id,
+      message,
+      ...this.actorData(user),
+      created: new Date(),
+    });
+  }
+
+  async createLog(
+    chamado_id: T.Id,
+    action: T.LogAction,
+    message: string,
+    user: T.Actor,
+  ): Promise<T.Result<T.IdData>> {
+    return await this.log_db.save({
+      chamado_id,
+      action,
+      message,
+      ...this.actorData(user),
+      created: new Date(),
+    });
+  }
+
+  private actorData(user: T.Actor): T.DataBasic {
+    return {
+      actor_id: "id" in user ? user.id : null,
+      actor_name: user.name,
+      actor_contact: user.contact,
+      actor_level: "level" in user ? user.level : null,
+    };
   }
 
   private async withMessages(
     chamado: T.ChamadoSummary,
   ): Promise<T.Result<T.Chamado>> {
-    const messages = await this.message_repo.findByChamadoId(chamado.id);
+    const messages = await this.message_db.findAll({
+      filters: { chamado_id: chamado.id },
+      limit: null,
+    });
 
     if (!messages.success) {
       return messages;
@@ -112,7 +139,10 @@ export class ChamadoRepository {
 
     return success("Chamado encontrado", {
       ...chamado,
-      messages: messages.data,
+      messages: messages.data.map((item) => ({
+        id: item.id,
+        ...item.data,
+      } as T.ChamadoMessage)),
     });
   }
 

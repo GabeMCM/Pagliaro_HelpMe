@@ -1,6 +1,6 @@
 import { Hono } from "@hono/hono";
-import { POST } from "./auth.handler.ts";
+import * as Handler from "./auth.handler.ts";
 
 export const authRoute = new Hono();
 
-authRoute.post("/login", POST.login);
+authRoute.post("/login", Handler.login);

@@ -1,57 +1,83 @@
 import type * as T from "../global/structure.ts";
 import { fail, success } from "../global/result.ts";
-import { toPublicUser } from "../user/user.mapper.ts";
-import { ChamadoLogRepository } from "./chamado-log.repo.ts";
-import { userActor } from "./chamado.mapper.ts";
-import { ChamadoMessageRepository } from "./chamado-message.repo.ts";
 import { ChamadoRepository } from "./chamado.repo.ts";
 
 export class ChamadoService {
-  constructor(
-    private chamado_repo: ChamadoRepository,
-    private message_repo: ChamadoMessageRepository,
-    private log_repo: ChamadoLogRepository,
-  ) {}
+  constructor(private chamado_repo: ChamadoRepository) {}
 
   async create(
-    current_user: T.User,
     chamado: T.CreateChamado,
-  ): Promise<T.Result<T.VersionData>> {
-    const result = await this.chamado_repo.create(chamado);
+  ): Promise<T.Result<T.CreatedChamadoData>> {
+    if (
+      typeof chamado?.client?.name !== "string" ||
+      !chamado.client.name.trim() ||
+      typeof chamado.client.contact !== "string" ||
+      !chamado.client.contact.trim() ||
+      typeof chamado.message !== "string" || !chamado.message.trim()
+    ) {
+      return fail("Informe client.name, client.contact e message", 400);
+    }
+
+    if (
+      chamado.details !== undefined &&
+      (!Array.isArray(chamado.details) ||
+        !chamado.details.every((item) =>
+          typeof item === "string" && item.trim()
+        ))
+    ) {
+      return fail("Campo details deve ser uma lista de textos", 400);
+    }
+
+    const client = {
+      name: chamado.client.name.trim(),
+      contact: chamado.client.contact.trim(),
+    };
+    const parts = crypto.getRandomValues(new Uint32Array(2));
+    const codigo = [...parts].map((part) => part.toString().padStart(10, "0"))
+      .join("");
+    const created = new Date();
+    const result = await this.chamado_repo.create({
+      codigo,
+      user_resp: null,
+      client,
+      status: "AGUARDANDO",
+      active: true,
+      details: chamado.details?.map((item) => item.trim()) ?? null,
+      created,
+      updated: created,
+    });
 
     if (!result.success) {
       return result;
     }
 
     const chamado_id = result.data.id;
-    const log_result = await this.log_repo.create(
+    const log_result = await this.chamado_repo.createLog(
       chamado_id,
       "CRIADO",
       "Chamado criado",
-      userActor(current_user),
+      client,
     );
 
     if (!log_result.success) {
       return log_result;
     }
 
-    for (const message of chamado.messages) {
-      const message_result = await this.addMessage(
-        chamado_id,
-        message.message,
-        chamado.client,
-      );
+    const message_result = await this.addMessage(
+      chamado_id,
+      chamado.message,
+      client,
+    );
 
-      if (!message_result.success) {
-        return message_result;
-      }
+    if (!message_result.success) {
+      return message_result;
     }
 
-    return result;
+    return success("Chamado criado", { codigo }, 201);
   }
 
   async findById(
-    current_user: T.User,
+    current_user: T.PublicUser,
     id: T.Id,
   ): Promise<T.Result<T.Chamado>> {
     const chamado = await this.chamado_repo.findById(id);
@@ -82,110 +108,26 @@ export class ChamadoService {
   }
 
   async findAll(
-    current_user: T.User,
+    current_user: T.PublicUser,
     limit = 50,
     offset = 0,
   ): Promise<T.Result<T.ChamadoSummary[]>> {
-    if (this.isDev(current_user) || this.isGestor(current_user)) {
+    if (this.canManage(current_user)) {
       return await this.chamado_repo.findAll({}, limit, offset);
     }
 
-    const waiting = await this.chamado_repo.findAll(
-      { status: "AGUARDANDO", active: true },
+    return await this.chamado_repo.findAll(
+      [
+        { status: "AGUARDANDO", active: true },
+        { user_resp_id: current_user.id, active: true },
+      ],
       limit,
       offset,
     );
-
-    if (!waiting.success) {
-      return waiting;
-    }
-
-    const assigned = await this.chamado_repo.findAll(
-      { user_resp_id: current_user.id, active: true },
-      limit,
-      offset,
-    );
-
-    if (!assigned.success) {
-      return assigned;
-    }
-
-    const chamados = new Map<T.Id, T.ChamadoSummary>();
-
-    for (const chamado of [...waiting.data, ...assigned.data]) {
-      chamados.set(chamado.id, chamado);
-    }
-
-    return success("Chamados encontrados", [...chamados.values()]);
-  }
-
-  async update(
-    current_user: T.User,
-    id: T.Id,
-    chamado: T.UpdateChamado,
-  ): Promise<T.Result<T.VersionData>> {
-    if (!this.isDev(current_user)) {
-      return fail("Somente Dev pode editar chamado", 403);
-    }
-
-    const current_data = await this.chamado_repo.findSummaryById(id);
-
-    if (!current_data.success) {
-      return current_data;
-    }
-
-    const result = await this.chamado_repo.update(
-      id,
-      chamado,
-      current_data.data.version,
-    );
-
-    if (!result.success) {
-      return result;
-    }
-
-    const log_result = await this.log_repo.create(
-      id,
-      "ATUALIZADO",
-      "Chamado atualizado",
-      userActor(current_user),
-    );
-
-    return log_result.success ? result : log_result;
-  }
-
-  async delete(
-    current_user: T.User,
-    id: T.Id,
-  ): Promise<T.Result<T.IdData>> {
-    if (!this.isDev(current_user)) {
-      return fail("Somente Dev pode apagar chamado", 403);
-    }
-
-    const chamado = await this.chamado_repo.findSummaryById(id);
-
-    if (!chamado.success) {
-      return chamado;
-    }
-
-    const result = await this.chamado_repo.delete(id);
-
-    if (!result.success) {
-      return result;
-    }
-
-    const log_result = await this.log_repo.create(
-      id,
-      "APAGADO",
-      `Chamado ${chamado.data.codigo} apagado`,
-      userActor(current_user),
-    );
-
-    return log_result.success ? result : log_result;
   }
 
   async capture(
-    current_user: T.User,
+    current_user: T.PublicUser,
     id: T.Id,
   ): Promise<T.Result<T.VersionData>> {
     const chamado = await this.chamado_repo.findSummaryById(id);
@@ -205,7 +147,7 @@ export class ChamadoService {
     const result = await this.chamado_repo.update(
       id,
       {
-        user_resp: toPublicUser(current_user),
+        user_resp: current_user,
         status: "EM ANDAMENTO",
         updated: new Date(),
       },
@@ -216,18 +158,18 @@ export class ChamadoService {
       return result;
     }
 
-    const log_result = await this.log_repo.create(
+    const log_result = await this.chamado_repo.createLog(
       id,
       "CAPTURADO",
       "Chamado capturado",
-      userActor(current_user),
+      current_user,
     );
 
     return log_result.success ? result : log_result;
   }
 
   async finish(
-    current_user: T.User,
+    current_user: T.PublicUser,
     id: T.Id,
   ): Promise<T.Result<T.VersionData>> {
     const chamado = await this.chamado_repo.findSummaryById(id);
@@ -241,7 +183,7 @@ export class ChamadoService {
     }
 
     if (
-      !this.isDev(current_user) && !this.isGestor(current_user) &&
+      !this.canManage(current_user) &&
       chamado.data.user_resp?.id !== current_user.id
     ) {
       return fail("Somente o responsável pode finalizar o chamado", 403);
@@ -257,49 +199,11 @@ export class ChamadoService {
       return result;
     }
 
-    const log_result = await this.log_repo.create(
+    const log_result = await this.chamado_repo.createLog(
       id,
       "FINALIZADO",
       "Chamado finalizado",
-      userActor(current_user),
-    );
-
-    return log_result.success ? result : log_result;
-  }
-
-  async deactivate(
-    current_user: T.User,
-    id: T.Id,
-  ): Promise<T.Result<T.VersionData>> {
-    if (!this.isDev(current_user) && !this.isGestor(current_user)) {
-      return fail("Usuário sem permissão para desativar chamado", 403);
-    }
-
-    const chamado = await this.chamado_repo.findSummaryById(id);
-
-    if (!chamado.success) {
-      return chamado;
-    }
-
-    if (chamado.data.status === "EM ANDAMENTO") {
-      return fail("Chamado em andamento não pode ser desativado", 400);
-    }
-
-    const result = await this.chamado_repo.update(
-      id,
-      { active: false, updated: new Date() },
-      chamado.data.version,
-    );
-
-    if (!result.success) {
-      return result;
-    }
-
-    const log_result = await this.log_repo.create(
-      id,
-      "DESATIVADO",
-      "Chamado desativado",
-      userActor(current_user),
+      current_user,
     );
 
     return log_result.success ? result : log_result;
@@ -321,13 +225,13 @@ export class ChamadoService {
 
     return await this.addMessage(
       chamado.data.id,
-      data.message,
+      data?.message,
       chamado.data.client,
     );
   }
 
   async sendUserMessage(
-    current_user: T.User,
+    current_user: T.PublicUser,
     id: T.Id,
     data: T.CreateMessage,
   ): Promise<T.Result<T.IdData>> {
@@ -342,26 +246,13 @@ export class ChamadoService {
     }
 
     if (
-      !this.isDev(current_user) && !this.isGestor(current_user) &&
+      !this.canManage(current_user) &&
       chamado.data.user_resp?.id !== current_user.id
     ) {
       return fail("Usuário sem permissão para enviar mensagem", 403);
     }
 
-    return await this.addMessage(id, data.message, userActor(current_user));
-  }
-
-  async findLogs(
-    current_user: T.User,
-    id: T.Id,
-    limit = 100,
-    offset = 0,
-  ): Promise<T.Result<T.ChamadoLog[]>> {
-    if (!this.isDev(current_user) && !this.isGestor(current_user)) {
-      return fail("Usuário sem permissão para visualizar logs", 403);
-    }
-
-    return await this.log_repo.findByChamadoId(id, limit, offset);
+    return await this.addMessage(id, data?.message, current_user);
   }
 
   private async addMessage(
@@ -369,13 +260,21 @@ export class ChamadoService {
     message: string,
     user: T.Actor,
   ): Promise<T.Result<T.IdData>> {
-    const result = await this.message_repo.create(chamado_id, message, user);
+    if (typeof message !== "string" || !message.trim()) {
+      return fail("Campo message é obrigatório", 400);
+    }
+
+    const result = await this.chamado_repo.createMessage(
+      chamado_id,
+      message.trim(),
+      user,
+    );
 
     if (!result.success) {
       return result;
     }
 
-    const log_result = await this.log_repo.create(
+    const log_result = await this.chamado_repo.createLog(
       chamado_id,
       "MENSAGEM ENVIADA",
       "Mensagem enviada",
@@ -385,8 +284,8 @@ export class ChamadoService {
     return log_result.success ? result : log_result;
   }
 
-  private canView(user: T.User, chamado: T.Chamado): boolean {
-    if (this.isDev(user) || this.isGestor(user)) {
+  private canView(user: T.PublicUser, chamado: T.Chamado): boolean {
+    if (this.canManage(user)) {
       return true;
     }
 
@@ -394,11 +293,7 @@ export class ChamadoService {
       (chamado.status === "AGUARDANDO" || chamado.user_resp?.id === user.id);
   }
 
-  private isDev(user: T.User): boolean {
-    return user.active && user.level === "Dev";
-  }
-
-  private isGestor(user: T.User): boolean {
-    return user.active && user.level === "Gestor";
+  private canManage(user: T.PublicUser): boolean {
+    return user.active && (user.level === "Dev" || user.level === "Gestor");
   }
 }

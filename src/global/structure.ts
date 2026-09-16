@@ -2,6 +2,7 @@ export type DataBasic = Record<string, unknown>;
 export type Id = string;
 export type IdData = { id: Id };
 export type VersionData = IdData & { version: number };
+export type CreatedChamadoData = { codigo: string };
 export type FindData = { id: Id; data: DataBasic };
 export type FindAllData = FindData[];
 export type Status = "EM ANDAMENTO" | "AGUARDANDO" | "FINALIZADO";
@@ -13,17 +14,6 @@ export type SerializedError = {
   name: string;
   message: string;
 };
-
-export const ResponseMessage = {
-  200: "Operação realizada com sucesso",
-  201: "Registro criado com sucesso",
-  400: "Erro na requisição",
-  401: "Autenticação necessária",
-  403: "Usuário sem permissão",
-  404: "Registro não encontrado",
-  409: "Registro alterado por outra operação",
-  500: "Erro interno",
-} as const;
 
 export type Success<T> = {
   success: true;
@@ -59,20 +49,14 @@ export type User = {
 };
 
 export type PublicUser = Omit<User, "password_hash">;
+export type AppEnv = { Variables: { current_user: PublicUser } };
+export type TokenPayload = { user_id: Id; exp: number };
 export type UserActor = Pick<PublicUser, "id" | "name" | "contact" | "level">;
 export type Actor = ClientInfo | UserActor;
 
 export type CreateUser = Omit<User, "id" | "password_hash" | "version"> & {
   password: string;
 };
-
-export type UpdateUser =
-  & Partial<
-    Pick<User, "name" | "contact" | "level" | "active">
-  >
-  & {
-    password?: string;
-  };
 
 export type LoginData = {
   contact: string;
@@ -88,19 +72,7 @@ export type LogAction =
   | "CRIADO"
   | "CAPTURADO"
   | "MENSAGEM ENVIADA"
-  | "ATUALIZADO"
-  | "FINALIZADO"
-  | "DESATIVADO"
-  | "APAGADO";
-
-export type ChamadoLog = {
-  id: Id;
-  chamado_id: Id;
-  action: LogAction;
-  message: string;
-  user: Actor;
-  created: Date;
-};
+  | "FINALIZADO";
 
 export type ChamadoMessage = {
   id: Id;
@@ -126,29 +98,30 @@ export type Chamado = {
 
 export type ChamadoSummary = Omit<Chamado, "messages">;
 
-export type CreateChamado =
-  & Omit<
-    Chamado,
-    "id" | "version" | "messages"
-  >
-  & {
-    messages: CreateMessage[];
-  };
+export type CreateChamado = {
+  client: ClientInfo;
+  message: string;
+  details?: string[];
+};
+export type NewChamado = Omit<Chamado, "id" | "messages" | "version">;
 export type UpdateChamado = Partial<
-  Omit<Chamado, "id" | "messages" | "version">
+  Pick<Chamado, "user_resp" | "status" | "updated">
 >;
 export type CreateMessage = { message: string };
 
 export type QueryValue = string | number | boolean | null;
+export type FindFilters =
+  | Record<string, QueryValue>
+  | Record<string, QueryValue>[];
+export type TableName =
+  | "users"
+  | "chamados"
+  | "chamado_messages"
+  | "chamado_logs";
 export type FindOptions = {
-  filters?: Record<string, QueryValue>;
-  limit?: number;
+  filters?: FindFilters;
+  limit?: number | null;
   offset?: number;
-};
-
-export type Row = {
-  id: string;
-  data: string;
 };
 
 export interface DBAdapter {
@@ -156,7 +129,6 @@ export interface DBAdapter {
   findOne(filters: Record<string, QueryValue>): Promise<Result<FindData>>;
   findAll(options?: FindOptions): Promise<Result<FindAllData>>;
   save(data: DataBasic): Promise<Result<VersionData>>;
-  delete(id: Id): Promise<Result<IdData>>;
   update(
     id: Id,
     data: DataBasic,

@@ -1,4 +1,4 @@
- import { Pool } from "@db/postgres";
+import { pool } from "./postgres.adapter.ts";
 
 const migrations = [
   {
@@ -14,13 +14,6 @@ const migrations = [
 ];
 
 export async function runMigrations(): Promise<void> {
-  const database_url = Deno.env.get("DATABASE_URL");
-
-  if (!database_url) {
-    throw new Error("DATABASE_URL não informada");
-  }
-
-  const pool = new Pool(database_url, 1, true);
   const client = await pool.connect();
 
   try {
@@ -63,6 +56,5 @@ export async function runMigrations(): Promise<void> {
     }
   } finally {
     client.release();
-    await pool.end();
   }
 }

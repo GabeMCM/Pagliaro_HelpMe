@@ -15,7 +15,6 @@
         packages = [
           pkgs.deno
           pkgs.postgresql
-          pkgs.sqlite
         ];
       };
     };

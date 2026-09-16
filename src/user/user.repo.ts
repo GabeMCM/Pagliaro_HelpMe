@@ -35,39 +35,9 @@ export class UserRepository {
       ...result.data.data,
     } as T.User);
   }
+}
 
-  async findAll(
-    limit = 50,
-    offset = 0,
-  ): Promise<T.Result<T.User[]>> {
-    const result = await this.db.findAll({ limit, offset });
-
-    if (!result.success) {
-      return result;
-    }
-
-    return success(
-      result.message,
-      result.data.map((item) => ({
-        id: item.id,
-        ...item.data,
-      } as T.User)),
-    );
-  }
-
-  async delete(id: T.Id): Promise<T.Result<T.IdData>> {
-    return await this.db.delete(id);
-  }
-
-  async update(
-    id: T.Id,
-    user: Partial<Omit<T.User, "id" | "version">>,
-    expected_version: number,
-  ): Promise<T.Result<T.VersionData>> {
-    return await this.db.update(
-      id,
-      user as T.DataBasic,
-      expected_version,
-    );
-  }
+export function toPublicUser(user: T.User): T.PublicUser {
+  const { password_hash: _password_hash, ...public_user } = user;
+  return public_user;
 }

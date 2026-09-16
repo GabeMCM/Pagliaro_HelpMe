@@ -1,17 +1,15 @@
 import { Hono } from "@hono/hono";
-import { DELETE, GET, PATCH, POST } from "./chamado.handler.ts";
+import { authenticate } from "../auth/auth.handler.ts";
+import type * as T from "../global/structure.ts";
+import * as Handler from "./chamado.handler.ts";
 
-export const chamadoRoute = new Hono();
+export const chamadoRoute = new Hono<T.AppEnv>();
 
-chamadoRoute.get("/", GET.listChamados);
-chamadoRoute.post("/", POST.createChamado);
-chamadoRoute.get("/public/:codigo", GET.findChamadoByCode);
-chamadoRoute.post("/public/:codigo/mensagem", POST.sendClientMessage);
-chamadoRoute.get("/:id", GET.findChamadoById);
-chamadoRoute.get("/:id/logs", GET.listChamadoLogs);
-chamadoRoute.post("/:id/mensagem", POST.sendUserMessage);
-chamadoRoute.delete("/:id", DELETE.deleteChamado);
-chamadoRoute.patch("/:id", PATCH.updateChamado);
-chamadoRoute.patch("/:id/capturar", PATCH.captureChamado);
-chamadoRoute.patch("/:id/finalizar", PATCH.finishChamado);
-chamadoRoute.patch("/:id/desativar", PATCH.deactivateChamado);
+chamadoRoute.post("/", Handler.createChamado);
+chamadoRoute.get("/public/:codigo", Handler.findChamadoByCode);
+chamadoRoute.post("/public/:codigo/mensagem", Handler.sendClientMessage);
+chamadoRoute.get("/", authenticate, Handler.listChamados);
+chamadoRoute.get("/:id", authenticate, Handler.findChamadoById);
+chamadoRoute.post("/:id/mensagem", authenticate, Handler.sendUserMessage);
+chamadoRoute.patch("/:id/capturar", authenticate, Handler.captureChamado);
+chamadoRoute.patch("/:id/finalizar", authenticate, Handler.finishChamado);
