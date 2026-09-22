@@ -1,5 +1,6 @@
 import { Hono } from "@hono/hono";
 import { cors } from "@hono/cors";
+import { serveStatic } from "@hono/hono/deno";
 import { runMigrations } from "./adapters/migrations.ts";
 import { pool } from "./adapters/postgres.adapter.ts";
 import { authRoute } from "./auth/auth.route.ts";
@@ -14,7 +15,7 @@ app.use(
   "*",
   cors({
     allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   }),
 );
 
@@ -23,6 +24,9 @@ app.notFound((c) => respond(c, fail("Rota não encontrada", 404)));
 app.route("/auth", authRoute);
 app.route("/chamado", chamadoRoute);
 app.route("/user", userRoute);
+app.get("/", serveStatic({ path: "./frontend/index.html" }));
+app.get("/styles.css", serveStatic({ path: "./frontend/styles.css" }));
+app.get("/app.js", serveStatic({ path: "./frontend/app.js" }));
 
 await runMigrations();
 

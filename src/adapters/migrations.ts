@@ -11,6 +11,16 @@ const migrations = [
     name: "persistent_logs",
     path: new URL("./migrations/002_persistent_logs.sql", import.meta.url),
   },
+  {
+    version: 3,
+    name: "chamado_client_cpf",
+    path: new URL("./migrations/003_chamado_client_cpf.sql", import.meta.url),
+  },
+  {
+    version: 4,
+    name: "chamado_feedback",
+    path: new URL("./migrations/004_chamado_feedback.sql", import.meta.url),
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

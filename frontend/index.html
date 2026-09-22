@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#174d3b" />
+    <title>Central de Suporte</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <button class="brand" type="button" data-main-view="client"
+        aria-label="Central de Suporte">
+        <span class="brand-mark" aria-hidden="true">CS</span>
+        <span>Central de Suporte</span>
+      </button>
+
+      <nav class="main-nav" aria-label="Área do sistema">
+        <button class="nav-button active" type="button"
+          data-main-view="client">Cliente</button>
+        <button class="nav-button" type="button"
+          data-main-view="staff">Equipe</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="client-view" class="client-layout">
+        <aside class="client-menu" aria-label="Opções do cliente">
+          <div>
+            <p class="eyebrow">Atendimento</p>
+            <h1>Como podemos ajudar?</h1>
+          </div>
+
+          <nav class="client-tabs">
+            <button class="client-tab active" type="button"
+              data-client-view="open-ticket">
+              Abrir chamado
+            </button>
+            <button class="client-tab" type="button"
+              data-client-view="find-ticket">
+              Consultar chamado
+            </button>
+          </nav>
+
+          <div class="contact-note">
+            <strong>Já possui um chamado?</strong>
+            <span>Consulte o andamento e converse com o atendimento.</span>
+          </div>
+        </aside>
+
+        <section class="client-content">
+          <div id="open-ticket" class="client-panel">
+            <header class="section-heading">
+              <p class="eyebrow">Novo chamado</p>
+              <h2>Conte o que aconteceu</h2>
+            </header>
+
+            <form id="open-form" class="form-grid">
+              <label class="field full-field">
+                <span>Nome</span>
+                <input name="name" autocomplete="name" required
+                  maxlength="120" />
+              </label>
+
+              <label class="field">
+                <span>CPF</span>
+                <input
+                  name="cpf"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="000.000.000-00"
+                  required
+                  maxlength="14"
+                />
+              </label>
+
+              <label class="field">
+                <span>Telefone</span>
+                <input
+                  name="contact"
+                  type="tel"
+                  inputmode="tel"
+                  autocomplete="tel"
+                  placeholder="(00) 00000-0000"
+                  required
+                  maxlength="15"
+                />
+              </label>
+
+              <label class="field full-field">
+                <span>Mensagem</span>
+                <textarea
+                  name="message"
+                  rows="6"
+                  required
+                  maxlength="3000"
+                  placeholder="Descreva o problema"
+                ></textarea>
+              </label>
+
+              <div class="form-footer full-field">
+                <p id="open-feedback" class="feedback" role="status"></p>
+                <button class="primary-button"
+                  type="submit">Criar chamado</button>
+              </div>
+            </form>
+
+            <section id="ticket-created" class="confirmation" hidden>
+              <span class="confirmation-symbol" aria-hidden="true">✓</span>
+              <p class="eyebrow">Chamado criado</p>
+              <h2>Guarde o número do chamado</h2>
+              <div class="protocol-row">
+                <strong id="created-code"></strong>
+                <button id="copy-code" class="secondary-button"
+                  type="button">Copiar</button>
+              </div>
+              <button id="view-created-ticket" class="primary-button"
+                type="button">
+                Acompanhar chamado
+              </button>
+            </section>
+          </div>
+
+          <div id="find-ticket" class="client-panel" hidden>
+            <header class="section-heading">
+              <p class="eyebrow">Acompanhamento</p>
+              <h2>Consultar chamado</h2>
+            </header>
+
+            <div class="segmented-control" role="tablist"
+              aria-label="Forma de consulta">
+              <button class="active" type="button" role="tab"
+                data-search-mode="code">
+                Número do chamado
+              </button>
+              <button type="button" role="tab"
+                data-search-mode="cpf">CPF</button>
+            </div>
+
+            <form id="code-search-form" class="search-form">
+              <label class="field">
+                <span>Número do chamado</span>
+                <input name="code" inputmode="numeric" autocomplete="off"
+                  required />
+              </label>
+              <button class="primary-button" type="submit">Consultar</button>
+            </form>
+
+            <form id="cpf-search-form" class="search-form" hidden>
+              <label class="field">
+                <span>CPF</span>
+                <input
+                  name="cpf"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="000.000.000-00"
+                  required
+                  maxlength="14"
+                />
+              </label>
+              <button class="primary-button"
+                type="submit">Enviar código</button>
+            </form>
+
+            <p id="search-feedback" class="feedback" role="status"></p>
+            <section id="public-ticket" class="ticket-view" hidden></section>
+          </div>
+        </section>
+      </section>
+
+      <section id="staff-view" hidden>
+        <section id="login-panel" class="login-layout">
+          <form id="login-form" class="login-form">
+            <div class="section-heading">
+              <p class="eyebrow">Equipe</p>
+              <h1>Entrar no atendimento</h1>
+            </div>
+
+            <label class="field">
+              <span>Usuário</span>
+              <input name="contact" autocomplete="username" required />
+            </label>
+
+            <label class="field">
+              <span>Senha</span>
+              <input name="password" type="password"
+                autocomplete="current-password" required />
+            </label>
+
+            <p id="login-feedback" class="feedback" role="status"></p>
+            <button class="primary-button" type="submit">Entrar</button>
+          </form>
+        </section>
+
+        <section id="staff-workspace" class="staff-shell" hidden>
+          <header class="staff-toolbar">
+            <nav class="staff-modes" aria-label="Área da equipe">
+              <button class="active" type="button"
+                data-staff-mode="attendance">Atendimento</button>
+              <button id="management-mode-button" type="button"
+                data-staff-mode="management">Gestão</button>
+            </nav>
+            <div class="staff-account">
+              <span id="staff-name"></span>
+              <button id="logout-button" class="text-button"
+                type="button">Sair</button>
+            </div>
+          </header>
+
+          <section id="attendance-workspace" class="attendance-workspace">
+            <aside class="queue-panel">
+              <header class="queue-header">
+                <div>
+                  <p class="eyebrow">Atendimento</p>
+                  <h1>Chamados</h1>
+                </div>
+                <button id="refresh-queue" class="icon-button" type="button"
+                  title="Atualizar fila" aria-label="Atualizar fila">↻</button>
+              </header>
+
+              <form id="ticket-search-form" class="queue-search">
+                <label>
+                  <span class="sr-only">Pesquisar chamados</span>
+                  <input name="query" type="search"
+                    placeholder="Mensagem, CPF, número ou data" required />
+                </label>
+                <button class="search-button" type="submit">Pesquisar</button>
+                <button id="clear-ticket-search" class="clear-search"
+                  type="button" hidden>Limpar</button>
+              </form>
+
+              <div class="queue-filters" role="tablist"
+                aria-label="Filtro de chamados">
+                <button class="active" type="button"
+                  data-queue-filter="all">Fila</button>
+                <button type="button"
+                  data-queue-filter="AGUARDANDO">Abertos</button>
+                <button type="button"
+                  data-queue-filter="EM ANDAMENTO">Em andamento</button>
+                <button type="button"
+                  data-queue-filter="FINALIZADO">Finalizados</button>
+              </div>
+
+              <p id="queue-feedback" class="feedback queue-feedback"
+                role="status"></p>
+              <div id="ticket-list" class="ticket-list"></div>
+            </aside>
+
+            <section id="staff-ticket" class="staff-ticket empty-state">
+              <div>
+                <span class="empty-symbol" aria-hidden="true">#</span>
+                <h2>Selecione um chamado</h2>
+              </div>
+            </section>
+          </section>
+
+          <section id="management-workspace" class="management-workspace"
+            hidden>
+            <aside class="management-menu">
+              <div>
+                <p class="eyebrow">Gestão</p>
+                <h1>Administração</h1>
+              </div>
+              <nav class="management-tabs">
+                <button class="active" type="button"
+                  data-management-view="users">Usuários</button>
+                <button type="button"
+                  data-management-view="tickets">Chamados</button>
+                <button type="button"
+                  data-management-view="logs">Logs</button>
+              </nav>
+            </aside>
+
+            <div class="management-content">
+              <section id="management-users" class="management-panel">
+                <header class="management-heading">
+                  <div>
+                    <p class="eyebrow">Acessos</p>
+                    <h2>Usuários</h2>
+                  </div>
+                  <button class="icon-button management-refresh" type="button"
+                    title="Atualizar usuários"
+                    aria-label="Atualizar usuários">↻</button>
+                </header>
+
+                <form id="create-user-form" class="compact-form">
+                  <label class="field">
+                    <span>Nome</span>
+                    <input name="name" required />
+                  </label>
+                  <label class="field">
+                    <span>Usuário</span>
+                    <input name="contact" autocomplete="off" required />
+                  </label>
+                  <label class="field">
+                    <span>Senha</span>
+                    <input name="password" type="password"
+                      autocomplete="new-password" required />
+                  </label>
+                  <label class="field">
+                    <span>Nível</span>
+                    <select name="level" required>
+                      <option value="Basic">Basic</option>
+                      <option value="Gestor">Gestor</option>
+                      <option value="Dev">Dev</option>
+                    </select>
+                  </label>
+                  <button class="primary-button" type="submit">Criar</button>
+                </form>
+                <p id="user-feedback" class="feedback" role="status"></p>
+                <div id="users-list" class="management-list"></div>
+              </section>
+
+              <section id="management-tickets" class="management-panel" hidden>
+                <header class="management-heading">
+                  <div>
+                    <p class="eyebrow">Dados</p>
+                    <h2>Chamados</h2>
+                  </div>
+                  <button class="icon-button management-refresh" type="button"
+                    title="Atualizar chamados"
+                    aria-label="Atualizar chamados">↻</button>
+                </header>
+                <p id="management-ticket-feedback" class="feedback"
+                  role="status"></p>
+                <div id="management-ticket-list"
+                  class="management-list"></div>
+              </section>
+
+              <section id="management-logs" class="management-panel" hidden>
+                <header class="management-heading">
+                  <div>
+                    <p class="eyebrow">Auditoria</p>
+                    <h2>Logs</h2>
+                  </div>
+                  <button class="icon-button management-refresh" type="button"
+                    title="Atualizar logs"
+                    aria-label="Atualizar logs">↻</button>
+                </header>
+                <p id="log-feedback" class="feedback" role="status"></p>
+                <div id="logs-list" class="management-list log-list"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

@@ -11,11 +11,16 @@ export class ChamadoService {
     if (
       typeof chamado?.client?.name !== "string" ||
       !chamado.client.name.trim() ||
+      typeof chamado.client.cpf !== "string" ||
+      !chamado.client.cpf.trim() ||
       typeof chamado.client.contact !== "string" ||
       !chamado.client.contact.trim() ||
       typeof chamado.message !== "string" || !chamado.message.trim()
     ) {
-      return fail("Informe client.name, client.contact e message", 400);
+      return fail(
+        "Informe client.name, client.cpf, client.contact e message",
+        400,
+      );
     }
 
     if (
@@ -30,8 +35,13 @@ export class ChamadoService {
 
     const client = {
       name: chamado.client.name.trim(),
+      cpf: chamado.client.cpf.replace(/\D/g, ""),
       contact: chamado.client.contact.trim(),
     };
+
+    if (client.cpf.length !== 11) {
+      return fail("CPF deve conter 11 números", 400);
+    }
     const parts = crypto.getRandomValues(new Uint32Array(2));
     const codigo = [...parts].map((part) => part.toString().padStart(10, "0"))
       .join("");
@@ -42,6 +52,7 @@ export class ChamadoService {
       client,
       status: "AGUARDANDO",
       active: true,
+      feedback: null,
       details: chamado.details?.map((item) => item.trim()) ?? null,
       created,
       updated: created,
@@ -93,7 +104,7 @@ export class ChamadoService {
     return chamado;
   }
 
-  async findByCode(codigo: string): Promise<T.Result<T.Chamado>> {
+  async findByCode(codigo: string): Promise<T.Result<T.PublicChamado>> {
     const chamado = await this.chamado_repo.findByCode(codigo);
 
     if (!chamado.success) {
@@ -104,7 +115,8 @@ export class ChamadoService {
       return fail("Chamado não encontrado", 404);
     }
 
-    return chamado;
+    const { cpf: _cpf, ...client } = chamado.data.client;
+    return success(chamado.message, { ...chamado.data, client });
   }
 
   async findAll(
@@ -123,6 +135,42 @@ export class ChamadoService {
       ],
       limit,
       offset,
+    );
+  }
+
+  async search(
+    current_user: T.PublicUser,
+    query: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<T.Result<T.ChamadoSummary[]>> {
+    if (!query.trim()) {
+      return fail("Informe um texto para pesquisar", 400);
+    }
+
+    const normalized_query = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/.test(
+        query.trim(),
+      )
+      ? query.replace(/\D/g, "")
+      : query.trim();
+
+    if (this.canManage(current_user)) {
+      return await this.chamado_repo.findAll(
+        {},
+        limit,
+        offset,
+        normalized_query,
+      );
+    }
+
+    return await this.chamado_repo.findAll(
+      [
+        { status: "AGUARDANDO", active: true },
+        { user_resp_id: current_user.id, active: true },
+      ],
+      limit,
+      offset,
+      normalized_query,
     );
   }
 
@@ -253,6 +301,112 @@ export class ChamadoService {
     }
 
     return await this.addMessage(id, data?.message, current_user);
+  }
+
+  async sendFeedback(
+    codigo: string,
+    data: T.CreateFeedback,
+  ): Promise<T.Result<T.VersionData>> {
+    if (!Number.isInteger(data?.note) || data.note < 0 || data.note > 5) {
+      return fail("A nota deve ser um número inteiro entre 0 e 5", 400);
+    }
+
+    const chamado = await this.chamado_repo.findByCode(codigo);
+    if (!chamado.success) return chamado;
+
+    if (!chamado.data.active || chamado.data.status !== "FINALIZADO") {
+      return fail("Somente chamado finalizado aceita feedback", 400);
+    }
+
+    if (chamado.data.feedback !== null) {
+      return fail("Feedback já enviado", 409);
+    }
+
+    const result = await this.chamado_repo.update(
+      chamado.data.id,
+      { feedback: data.note, updated: new Date() },
+      chamado.data.version,
+    );
+
+    if (!result.success) return result;
+
+    const log_result = await this.chamado_repo.createLog(
+      chamado.data.id,
+      "FEEDBACK ENVIADO",
+      `Nota ${data.note} enviada pelo cliente`,
+      chamado.data.client,
+    );
+
+    return log_result.success ? result : log_result;
+  }
+
+  async findLogs(
+    current_user: T.PublicUser,
+    limit = 100,
+    offset = 0,
+  ): Promise<T.Result<T.ChamadoLog[]>> {
+    if (!this.canManage(current_user)) {
+      return fail("Usuário sem permissão para consultar logs", 403);
+    }
+
+    return await this.chamado_repo.findLogs(limit, offset);
+  }
+
+  async deactivate(
+    current_user: T.PublicUser,
+    id: T.Id,
+  ): Promise<T.Result<T.VersionData>> {
+    if (!this.canManage(current_user)) {
+      return fail("Usuário sem permissão para desativar chamado", 403);
+    }
+
+    const chamado = await this.chamado_repo.findSummaryById(id);
+    if (!chamado.success) return chamado;
+
+    if (!chamado.data.active) {
+      return fail("Chamado já está desativado", 400);
+    }
+
+    const result = await this.chamado_repo.update(
+      id,
+      { active: false, updated: new Date() },
+      chamado.data.version,
+    );
+
+    if (!result.success) return result;
+
+    const log_result = await this.chamado_repo.createLog(
+      id,
+      "DESATIVADO",
+      "Chamado desativado",
+      current_user,
+    );
+
+    return log_result.success ? result : log_result;
+  }
+
+  async delete(
+    current_user: T.PublicUser,
+    id: T.Id,
+  ): Promise<T.Result<T.IdData>> {
+    if (!current_user.active || current_user.level !== "Dev") {
+      return fail("Somente Dev pode apagar chamado", 403);
+    }
+
+    const chamado = await this.chamado_repo.findSummaryById(id);
+    if (!chamado.success) return chamado;
+
+    const result = await this.chamado_repo.delete(id);
+    if (!result.success) return result;
+
+    const log_result = await this.chamado_repo.createLog(
+      id,
+      "APAGADO",
+      `Chamado ${chamado.data.codigo} apagado`,
+      current_user,
+    );
+
+    return log_result.success ? result : log_result;
   }
 
   private async addMessage(

@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY --chown=deno:deno deno.json deno.lock ./
 COPY --chown=deno:deno src ./src
+COPY --chown=deno:deno frontend ./frontend
 
 USER deno
 

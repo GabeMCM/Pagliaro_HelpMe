@@ -35,6 +35,7 @@ export type Result<T> = Success<T> | Failure;
 
 export type ClientInfo = {
   name: string;
+  cpf: string;
   contact: string;
 };
 
@@ -52,7 +53,8 @@ export type PublicUser = Omit<User, "password_hash">;
 export type AppEnv = { Variables: { current_user: PublicUser } };
 export type TokenPayload = { user_id: Id; exp: number };
 export type UserActor = Pick<PublicUser, "id" | "name" | "contact" | "level">;
-export type Actor = ClientInfo | UserActor;
+export type ClientActor = Pick<ClientInfo, "name" | "contact">;
+export type Actor = ClientActor | UserActor;
 
 export type CreateUser = Omit<User, "id" | "password_hash" | "version"> & {
   password: string;
@@ -72,11 +74,23 @@ export type LogAction =
   | "CRIADO"
   | "CAPTURADO"
   | "MENSAGEM ENVIADA"
-  | "FINALIZADO";
+  | "FINALIZADO"
+  | "FEEDBACK ENVIADO"
+  | "DESATIVADO"
+  | "APAGADO";
 
 export type ChamadoMessage = {
   id: Id;
   chamado_id: Id;
+  message: string;
+  user: Actor;
+  created: Date;
+};
+
+export type ChamadoLog = {
+  id: Id;
+  chamado_id: Id;
+  action: LogAction;
   message: string;
   user: Actor;
   created: Date;
@@ -89,6 +103,7 @@ export type Chamado = {
   client: ClientInfo;
   status: Status;
   active: boolean;
+  feedback: number | null;
   details: string[] | null;
   messages: ChamadoMessage[];
   created: Date;
@@ -97,6 +112,9 @@ export type Chamado = {
 };
 
 export type ChamadoSummary = Omit<Chamado, "messages">;
+export type PublicChamado = Omit<Chamado, "client"> & {
+  client: ClientActor;
+};
 
 export type CreateChamado = {
   client: ClientInfo;
@@ -105,9 +123,11 @@ export type CreateChamado = {
 };
 export type NewChamado = Omit<Chamado, "id" | "messages" | "version">;
 export type UpdateChamado = Partial<
-  Pick<Chamado, "user_resp" | "status" | "updated">
+  Pick<Chamado, "user_resp" | "status" | "active" | "feedback" | "updated">
 >;
 export type CreateMessage = { message: string };
+export type CreateFeedback = { note: number };
+export type UpdateUserActive = { active: boolean };
 
 export type QueryValue = string | number | boolean | null;
 export type FindFilters =
@@ -120,6 +140,7 @@ export type TableName =
   | "chamado_logs";
 export type FindOptions = {
   filters?: FindFilters;
+  search?: string;
   limit?: number | null;
   offset?: number;
 };
@@ -134,4 +155,5 @@ export interface DBAdapter {
     data: DataBasic,
     expected_version: number,
   ): Promise<Result<VersionData>>;
+  delete(id: Id): Promise<Result<IdData>>;
 }

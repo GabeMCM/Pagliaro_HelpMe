@@ -15,9 +15,11 @@ export class ChamadoRepository {
       codigo: chamado.codigo,
       user_resp_id: chamado.user_resp?.id ?? null,
       client_name: chamado.client.name,
+      client_cpf: chamado.client.cpf,
       client_contact: chamado.client.contact,
       status: chamado.status,
       active: chamado.active,
+      feedback: chamado.feedback,
       details: chamado.details,
       created: chamado.created,
       updated: chamado.updated,
@@ -58,8 +60,9 @@ export class ChamadoRepository {
     filters: T.FindFilters = {},
     limit = 50,
     offset = 0,
+    search?: string,
   ): Promise<T.Result<T.ChamadoSummary[]>> {
-    const result = await this.db.findAll({ filters, limit, offset });
+    const result = await this.db.findAll({ filters, limit, offset, search });
 
     if (!result.success) {
       return result;
@@ -79,6 +82,8 @@ export class ChamadoRepository {
     const data: T.DataBasic = {};
 
     if (chamado.status !== undefined) data.status = chamado.status;
+    if (chamado.active !== undefined) data.active = chamado.active;
+    if (chamado.feedback !== undefined) data.feedback = chamado.feedback;
     if (chamado.updated !== undefined) data.updated = chamado.updated;
 
     if (chamado.user_resp !== undefined) {
@@ -86,6 +91,29 @@ export class ChamadoRepository {
     }
 
     return await this.db.update(id, data, expected_version);
+  }
+
+  async delete(id: T.Id): Promise<T.Result<T.IdData>> {
+    return await this.db.delete(id);
+  }
+
+  async findLogs(
+    limit = 100,
+    offset = 0,
+  ): Promise<T.Result<T.ChamadoLog[]>> {
+    const result = await this.log_db.findAll({ limit, offset });
+
+    if (!result.success) {
+      return result;
+    }
+
+    return success(
+      result.message,
+      result.data.map((item) => ({
+        id: item.id,
+        ...item.data,
+      } as T.ChamadoLog)),
+    );
   }
 
   async createMessage(

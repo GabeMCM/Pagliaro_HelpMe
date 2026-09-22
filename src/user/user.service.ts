@@ -58,4 +58,69 @@ export class UserService {
       password_hash: await hashPassword(user.password),
     });
   }
+
+  async findAll(
+    current_user: T.PublicUser,
+  ): Promise<T.Result<T.PublicUser[]>> {
+    if (!this.canManage(current_user)) {
+      return fail("Usuário sem permissão para consultar usuários", 403);
+    }
+
+    const users = await this.user_repo.findAll();
+    if (!users.success) return users;
+
+    return {
+      ...users,
+      data: users.data.map((user) => {
+        const { password_hash: _password_hash, ...public_user } = user;
+        return public_user;
+      }),
+    };
+  }
+
+  async updateActive(
+    current_user: T.PublicUser,
+    id: T.Id,
+    data: T.UpdateUserActive,
+  ): Promise<T.Result<T.VersionData>> {
+    if (!this.canManage(current_user)) {
+      return fail("Usuário sem permissão para alterar usuários", 403);
+    }
+
+    if (typeof data?.active !== "boolean") {
+      return fail("Campo active deve ser boolean", 400);
+    }
+
+    if (current_user.id === id && !data.active) {
+      return fail("Usuário não pode desativar a própria conta", 400);
+    }
+
+    const user = await this.user_repo.findById(id);
+    if (!user.success) return user;
+
+    if (current_user.level === "Gestor" && user.data.level === "Dev") {
+      return fail("Gestor não pode alterar usuário Dev", 403);
+    }
+
+    return await this.user_repo.updateActive(user.data, data.active);
+  }
+
+  async delete(
+    current_user: T.PublicUser,
+    id: T.Id,
+  ): Promise<T.Result<T.IdData>> {
+    if (!current_user.active || current_user.level !== "Dev") {
+      return fail("Somente Dev pode apagar usuários", 403);
+    }
+
+    if (current_user.id === id) {
+      return fail("Usuário não pode apagar a própria conta", 400);
+    }
+
+    return await this.user_repo.delete(id);
+  }
+
+  private canManage(user: T.PublicUser): boolean {
+    return user.active && (user.level === "Dev" || user.level === "Gestor");
+  }
 }

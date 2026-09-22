@@ -56,9 +56,10 @@ export class PostgresAdapter implements T.DBAdapter {
     try {
       return await this.withClient(async (client) => {
         const filters = options.filters ?? {};
+        const search = options.search;
         const limit = options.limit === undefined ? 50 : options.limit;
         const offset = options.offset ?? 0;
-        const query = this.buildFindAllQuery(filters, limit, offset);
+        const query = this.buildFindAllQuery(filters, limit, offset, search);
         const result = await client.queryObject(query);
 
         return success(
@@ -105,7 +106,7 @@ export class PostgresAdapter implements T.DBAdapter {
     data: T.DataBasic,
     expected_version: number,
   ): Promise<T.Result<T.VersionData>> {
-    if (this.table !== "chamados") {
+    if (this.table !== "chamados" && this.table !== "users") {
       return fail("Este registro não pode ser alterado", 400);
     }
 
@@ -136,6 +137,28 @@ export class PostgresAdapter implements T.DBAdapter {
         }
 
         return fail("Registro alterado por outra operação", 409);
+      });
+    } catch (err) {
+      return this.databaseError(err);
+    }
+  }
+
+  async delete(id: T.Id): Promise<T.Result<T.IdData>> {
+    if (this.table !== "chamados" && this.table !== "users") {
+      return fail("Este registro não pode ser apagado", 400);
+    }
+
+    try {
+      return await this.withClient(async (client) => {
+        const result = await client.queryObject<{ id: T.Id }>({
+          text: `DELETE FROM ${this.table} WHERE id = $1 RETURNING id`,
+          args: [id],
+        });
+        const row = result.rows[0];
+
+        return row
+          ? success("Registro apagado", { id: row.id })
+          : fail("Registro não encontrado", 404);
       });
     } catch (err) {
       return this.databaseError(err);
@@ -179,24 +202,28 @@ export class PostgresAdapter implements T.DBAdapter {
           codigo,
           user_resp_id,
           client_name,
+          client_cpf,
           client_contact,
           status,
           active,
+          feedback,
           details,
           created,
           updated,
           version
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, 1)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, 1)
       `,
       args: [
         id,
         data.codigo,
         data.user_resp_id,
         data.client_name,
+        data.client_cpf,
         data.client_contact,
         data.status,
         data.active,
+        data.feedback,
         JSON.stringify(data.details),
         this.dateValue(data.created),
         this.dateValue(data.updated),
@@ -274,6 +301,7 @@ export class PostgresAdapter implements T.DBAdapter {
     filters: T.FindFilters,
     limit: number | null,
     offset: number,
+    search?: string,
   ): { text: string; args: T.QueryValue[] } {
     const allowed_columns = this.filterColumns();
     const clauses: string[] = [];
@@ -302,7 +330,42 @@ export class PostgresAdapter implements T.DBAdapter {
       );
     }
 
-    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" OR ")}` : "";
+    const where_parts: string[] = [];
+
+    if (clauses.length > 0) {
+      where_parts.push(`(${clauses.join(" OR ")})`);
+    }
+
+    if (search?.trim()) {
+      if (this.table !== "chamados") {
+        throw new Error(`Pesquisa não permitida para ${this.table}`);
+      }
+
+      args.push(`%${search.trim()}%`);
+      const position = args.length;
+      where_parts.push(`(
+        t.codigo ILIKE $${position}
+        OR t.client_cpf ILIKE $${position}
+        OR TO_CHAR(
+          t.created AT TIME ZONE 'America/Sao_Paulo',
+          'DD/MM/YYYY HH24:MI'
+        ) ILIKE $${position}
+        OR TO_CHAR(
+          t.created AT TIME ZONE 'America/Sao_Paulo',
+          'YYYY-MM-DD HH24:MI'
+        ) ILIKE $${position}
+        OR EXISTS (
+          SELECT 1
+          FROM chamado_messages m
+          WHERE m.chamado_id = t.id
+            AND m.message ILIKE $${position}
+        )
+      )`);
+    }
+
+    const where = where_parts.length > 0
+      ? ` WHERE ${where_parts.join(" AND ")}`
+      : "";
     args.push(limit);
     const limit_position = args.length;
     args.push(offset);
@@ -373,9 +436,11 @@ export class PostgresAdapter implements T.DBAdapter {
           t.id,
           t.codigo,
           t.client_name,
+          t.client_cpf,
           t.client_contact,
           t.status,
           t.active,
+          t.feedback,
           t.details,
           t.created,
           t.updated,
@@ -440,10 +505,12 @@ export class PostgresAdapter implements T.DBAdapter {
           : null,
         client: {
           name: data.client_name,
+          cpf: data.client_cpf,
           contact: data.client_contact,
         },
         status: data.status,
         active: data.active,
+        feedback: data.feedback,
         details: data.details,
         created: this.toDate(data.created),
         updated: this.toDate(data.updated),
@@ -502,7 +569,15 @@ export class PostgresAdapter implements T.DBAdapter {
   }
 
   private updateColumns(): string[] {
-    return ["user_resp_id", "status", "updated"];
+    if (this.table === "users") {
+      return ["active"];
+    }
+
+    if (this.table === "chamados") {
+      return ["user_resp_id", "status", "active", "feedback", "updated"];
+    }
+
+    return [];
   }
 
   private orderSQL(): string {

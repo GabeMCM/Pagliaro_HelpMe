@@ -35,6 +35,30 @@ export class UserRepository {
       ...result.data.data,
     } as T.User);
   }
+
+  async findAll(): Promise<T.Result<T.User[]>> {
+    const result = await this.db.findAll({ limit: null });
+
+    if (!result.success) {
+      return result;
+    }
+
+    return success(
+      result.message,
+      result.data.map((item) => ({ id: item.id, ...item.data } as T.User)),
+    );
+  }
+
+  async updateActive(
+    user: T.User,
+    active: boolean,
+  ): Promise<T.Result<T.VersionData>> {
+    return await this.db.update(user.id, { active }, user.version);
+  }
+
+  async delete(id: T.Id): Promise<T.Result<T.IdData>> {
+    return await this.db.delete(id);
+  }
 }
 
 export function toPublicUser(user: T.User): T.PublicUser {
